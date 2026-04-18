@@ -17,6 +17,7 @@ from .player import (
     PlayerUpdate,
     PlayerInDBBase,
     Player,
+    PlayerRegister,
 )
 from .game import (
     GameBase,
@@ -46,6 +47,7 @@ __all__ = [
     "PlayerUpdate",
     "PlayerInDBBase",
     "Player",
+    "PlayerRegister",
     # Game schemas
     "GameBase",
     "GameCreate",

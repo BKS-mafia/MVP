@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Button, Typography, Space, Card, message, Tag, List, Empty, Spin, Divider, Alert } from 'antd';
+import { Button, Typography, Space, Card, message, Tag, List, Empty, Spin, Divider, Alert, Modal, Input } from 'antd';
 import { PlusOutlined, LinkOutlined, ReloadOutlined, UserOutlined, TeamOutlined, LogoutOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
-import { createRoom, getRooms, RoomResponse, getCurrentPlayerRoom, leaveGame, PlayerRoomResponse } from '@/src/shared/api/endpoints/rooms';
+import { createRoom, getRooms, RoomResponse, getCurrentPlayerRoom, leaveGame, PlayerRoomResponse, registerNickname } from '@/src/shared/api/endpoints/rooms';
 import { getToken } from '@/src/shared/lib/getToken';
 
 const { Title, Text } = Typography;
@@ -18,11 +18,33 @@ export default function HomePage() {
     const [playerRoom, setPlayerRoom] = useState<PlayerRoomResponse | null>(null);
     const [checkingStatus, setCheckingStatus] = useState(true);
     const [leavingGame, setLeavingGame] = useState(false);
+    
+    // Состояние для модального окна регистрации никнейма
+    const [isRegisterModalVisible, setIsRegisterModalVisible] = useState(false);
+    const [registerNicknameValue, setRegisterNickname] = useState('');
+    const [isRegistering, setIsRegistering] = useState(false);
+    const [isPlayerRegistered, setIsPlayerRegistered] = useState(true);
 
     // Загрузка списка комнат и проверка статуса игрока
     useEffect(() => {
         loadRooms();
         checkPlayerStatus();
+    }, []);
+
+    // Проверка URL на наличие session_token при загрузке
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlToken = urlParams.get('session_token');
+        
+        if (urlToken) {
+            // Сохраняем токен в localStorage если его там нет
+            const storedToken = getToken();
+            if (!storedToken) {
+                localStorage.setItem('session_token', urlToken);
+            }
+            // Проверяем статус игрока с токеном из URL
+            checkPlayerStatusWithToken(urlToken);
+        }
     }, []);
 
     // Проверка статуса игрока - находится ли он в комнате
@@ -33,11 +55,64 @@ export default function HomePage() {
             if (token) {
                 const roomInfo = await getCurrentPlayerRoom(token);
                 setPlayerRoom(roomInfo);
+                // Проверяем, зарегистрирован ли игрок
+                if (roomInfo.is_registered === false) {
+                    setIsPlayerRegistered(false);
+                    setIsRegisterModalVisible(true);
+                } else {
+                    setIsPlayerRegistered(true);
+                }
             }
-        } catch (error) {
-            // Игрок не в комнате или ошибка - это нормально
+        } catch (error: unknown) {
+            // Проверяем, если ошибка 404 - игрок не найден, показываем модальное окно регистрации
+            if (error && typeof error === 'object' && 'response' in error) {
+                const axiosError = error as { response?: { status?: number } };
+                if (axiosError.response?.status === 404) {
+                    console.log('Player not found - показываем модальное окно регистрации');
+                    setIsPlayerRegistered(false);
+                    setIsRegisterModalVisible(true);
+                    setCheckingStatus(false);
+                    return;
+                }
+            }
+            // Игрок не в комнате или другая ошибка - это нормально
             console.log('Игрок не в комнате');
             setPlayerRoom(null);
+            setIsPlayerRegistered(true);
+        } finally {
+            setCheckingStatus(false);
+        }
+    };
+
+    // Проверка статуса игрока с конкретным токеном (из URL)
+    const checkPlayerStatusWithToken = async (token: string) => {
+        setCheckingStatus(true);
+        try {
+            const roomInfo = await getCurrentPlayerRoom(token);
+            setPlayerRoom(roomInfo);
+            // Проверяем, зарегистрирован ли игрок
+            if (roomInfo.is_registered === false) {
+                setIsPlayerRegistered(false);
+                setIsRegisterModalVisible(true);
+            } else {
+                setIsPlayerRegistered(true);
+            }
+        } catch (error: unknown) {
+            // Проверяем, если ошибка 404 - игрок не найден, показываем модальное окно регистрации
+            if (error && typeof error === 'object' && 'response' in error) {
+                const axiosError = error as { response?: { status?: number } };
+                if (axiosError.response?.status === 404) {
+                    console.log('Player not found - показываем модальное окно регистрации');
+                    setIsPlayerRegistered(false);
+                    setIsRegisterModalVisible(true);
+                    setCheckingStatus(false);
+                    return;
+                }
+            }
+            // Игрок не в комнате или другая ошибка
+            console.log('Игрок не в комнате');
+            setPlayerRoom(null);
+            setIsPlayerRegistered(true);
         } finally {
             setCheckingStatus(false);
         }
@@ -72,6 +147,54 @@ export default function HomePage() {
             router.push(`/room/${playerRoom.short_id}`);
         } else if (playerRoom?.room_id) {
             router.push(`/room/${playerRoom.room_id}`);
+        }
+    };
+    
+    // Обработчик регистрации никнейма
+    const handleRegister = async () => {
+        if (!registerNicknameValue.trim()) {
+            messageApi.error('Введите никнейм');
+            return;
+        }
+        
+        if (registerNicknameValue.length < 2) {
+            messageApi.error('Никнейм должен содержать минимум 2 символа');
+            return;
+        }
+        
+        if (registerNicknameValue.length > 20) {
+            messageApi.error('Никнейм не может превышать 20 символов');
+            return;
+        }
+        
+        // Пробуем получить токен из URL или из localStorage
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlToken = urlParams.get('session_token');
+        const token = urlToken || getToken();
+        
+        if (!token) {
+            messageApi.error('Токен сессии не найден');
+            return;
+        }
+        
+        setIsRegistering(true);
+        try {
+            await registerNickname(token, registerNicknameValue.trim());
+            setIsRegisterModalVisible(false);
+            setIsPlayerRegistered(true);
+            messageApi.success('Никнейм успешно сохранён!');
+            
+            // Очищаем URL от параметра session_token
+            window.history.replaceState({}, document.title, window.location.pathname);
+            
+            // Повторяем запрос к getCurrentPlayerRoom после успешной регистрации
+            const roomInfo = await getCurrentPlayerRoom(token);
+            setPlayerRoom(roomInfo);
+        } catch (error) {
+            console.error('Ошибка регистрации:', error);
+            messageApi.error('Не удалось сохранить никнейм. Попробуйте ещё раз.');
+        } finally {
+            setIsRegistering(false);
         }
     };
 
@@ -209,6 +332,42 @@ export default function HomePage() {
             }}
         >
             {contextHolder}
+            
+            {/* Модальное окно регистрации никнейма */}
+            <Modal
+                title="Добро пожаловать!"
+                open={isRegisterModalVisible}
+                closable={false}
+                maskClosable={false}
+                footer={null}
+                width={400}
+                style={{ top: '20%' }}
+            >
+                <div style={{ padding: '10px 0' }}>
+                    <p style={{ marginBottom: 16, color: '#666' }}>
+                        Для продолжения игры введите ваш никнейм:
+                    </p>
+                    <Input
+                        placeholder="Ваш никнейм"
+                        value={registerNicknameValue}
+                        onChange={(e) => setRegisterNickname(e.target.value)}
+                        onPressEnter={handleRegister}
+                        maxLength={20}
+                        size="large"
+                        style={{ marginBottom: 16 }}
+                        autoFocus
+                    />
+                    <Button
+                        type="primary"
+                        size="large"
+                        block
+                        onClick={handleRegister}
+                        loading={isRegistering}
+                    >
+                        Продолжить
+                    </Button>
+                </div>
+            </Modal>
             
             {/* Карточка с информацией о текущей игре */}
             {!checkingStatus && playerRoom?.in_room && (

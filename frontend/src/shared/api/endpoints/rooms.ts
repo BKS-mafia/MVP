@@ -150,6 +150,7 @@ export interface PlayerRoomResponse {
     short_id?: string;
     room_name?: string;
     status?: string;
+    is_registered?: boolean;
 }
 
 // GET /players/me - получить текущего игрока по session_token
@@ -173,4 +174,20 @@ export const leaveGame = async (sessionToken: string): Promise<void> => {
     await axiosInstance.delete('/players/me', {
         params: { session_token: sessionToken },
     });
+};
+
+// Типы для регистрации никнейма
+export interface RegisterNicknameRequest {
+    sessionToken: string;
+    nickname: string;
+}
+
+// POST /players/me/register - зарегистрировать никнейм игрока
+export const registerNickname = async (sessionToken: string, nickname: string): Promise<CurrentPlayerResponse> => {
+    const requestData: RegisterNicknameRequest = {
+        sessionToken,
+        nickname,
+    };
+    const response = await axiosInstance.post<CurrentPlayerResponse>('/players/me/register', requestData);
+    return response.data;
 };

@@ -70,6 +70,7 @@ async def get_current_player_room(
     """
     Получить информацию о комнате текущего игрока.
     Возвращает информацию о комнате, если игрок в ней находится.
+    Также возвращает флаг is_registered, указывающий, зарегистрирован ли игрок (имеет ли никнейм).
     """
     player = await crud.player.get_by_session_token(db, session_token=session_token)
     if not player:
@@ -77,6 +78,9 @@ async def get_current_player_room(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Player not found",
         )
+    
+    # Проверяем, зарегистрирован ли игрок (имеет ли никнейм отличный от временного)
+    is_registered = bool(player.nickname and not player.nickname.startswith("Player_"))
     
     # Получаем комнату
     room = await crud.room.get(db, id=player.room_id)
@@ -87,6 +91,7 @@ async def get_current_player_room(
             "short_id": None,
             "room_name": None,
             "status": None,
+            "is_registered": is_registered,
         }
     
     return {
@@ -95,6 +100,7 @@ async def get_current_player_room(
         "short_id": room.short_id,
         "room_name": room.short_id,
         "status": room.status,
+        "is_registered": is_registered,
     }
 
 
