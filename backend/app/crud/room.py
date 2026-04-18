@@ -218,7 +218,18 @@ class RoomCRUD:
         # Сериализация roles в JSON
         if "roles" in update_data:
             if update_data["roles"] is not None:
-                roles_dict = {k: v.model_dump(by_alias=True) for k, v in update_data["roles"].items()}
+                # Обрабатываем как Pydantic модели, так и словари
+                roles_dict = {}
+                for k, v in update_data["roles"].items():
+                    if hasattr(v, 'model_dump'):
+                        # Это Pydantic модель (RoleConfig)
+                        roles_dict[k] = v.model_dump(by_alias=True)
+                    elif isinstance(v, dict):
+                        # Это уже словарь
+                        roles_dict[k] = v
+                    else:
+                        # Неизвестный тип, пропускаем
+                        logger.warning(f"Unknown roles type for key {k}: {type(v)}")
                 update_data["roles"] = json.dumps(roles_dict)
             else:
                 update_data["roles"] = None

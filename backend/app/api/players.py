@@ -58,7 +58,7 @@ async def get_current_player_room(
         "in_room": True,
         "room_id": room.room_id,
         "short_id": room.short_id,
-        "room_name": room.name,
+        "room_name": room.short_id,
         "status": room.status,
     }
 

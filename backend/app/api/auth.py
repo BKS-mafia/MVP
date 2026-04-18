@@ -26,12 +26,56 @@ async def reconnect(
         )
 
     # Получаем комнату игрока
+    # Проверяем, что у игрока есть room_id
+    if not player.room_id:
+        # Игрок не в комнате - это нормальная ситуация, возвращаем информацию об игроке без комнаты
+        return {
+            "player": {
+                "id": player.id,
+                "player_id": player.player_id,
+                "nickname": player.nickname,
+                "role": player.role.value if player.role else None,
+                "is_alive": player.is_alive,
+                "is_ai": player.is_ai,
+                "session_token": player.session_token,
+            },
+            "room": None,
+            "game": None,
+            "phase": None,
+            "day_number": None,
+            "in_room": False,
+        }
+    
     room = await crud.room.get(db, id=player.room_id)
     if not room:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Room not found for this player",
-        )
+        # Комната была удалена, но игрок существует
+        # Обновляем статус игрока, чтобы он мог создать/присоединиться к новой комнате
+        try:
+            await crud.player.update(
+                db,
+                db_obj=player,
+                obj_in=schemas.PlayerUpdate(room_id=None, is_connected=False),
+            )
+        except Exception:
+            pass
+        
+        return {
+            "player": {
+                "id": player.id,
+                "player_id": player.player_id,
+                "nickname": player.nickname,
+                "role": player.role.value if player.role else None,
+                "is_alive": player.is_alive,
+                "is_ai": player.is_ai,
+                "session_token": player.session_token,
+            },
+            "room": None,
+            "game": None,
+            "phase": None,
+            "day_number": None,
+            "in_room": False,
+            "error": "Room was deleted",
+        }
 
     # Получаем текущую игру
     game = await crud.game.get_by_room(db, room_id=player.room_id)
