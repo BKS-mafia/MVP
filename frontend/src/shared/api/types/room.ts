@@ -18,19 +18,19 @@ export interface CreateRoomRequest {
 }
 
 export interface CreateRoomResponse {
-    host_token: string;
+    hostToken: string;
     status: 'lobby' | 'archiv' | 'active';
     totalPlayers: number;
     aiCount: number;
     peopleCount: number;
     roles: RolesObject;
-    current_players: number;
-    ai_players: number;
-    human_players: number;
+    currentPlayers: number;
+    aiPlayers: number;
+    humanPlayers: number;
     settings: Record<string, any>;
     id: number;
-    room_id: string;
-    short_id: string;
-    created_at: string;
-    updated_at: string | null;
+    roomId: string;
+    shortId: string;
+    creationTime: string;
+    updateTime: string | null;
 }

@@ -27,14 +27,14 @@ function RoomEditContent() {
             try {
                 const roomData = await getRoom(roomId);
                 setRoom({
-                    room_id: roomData.room_id,
-                    short_id: roomData.short_id,
+                    room_id: roomData.roomId,
+                    short_id: roomData.shortId,
                     name: roomData.name,
                     status: roomData.status as 'lobby' | 'starting' | 'playing' | 'finished',
-                    total_players: roomData.total_players,
-                    current_players: roomData.current_players,
-                    human_players: roomData.human_players,
-                    ai_players: roomData.ai_players,
+                    total_players: roomData.totalPlayers,
+                    current_players: roomData.currentPlayers,
+                    human_players: roomData.humanPlayers,
+                    ai_players: roomData.aiPlayers,
                 });
             } catch (error) {
                 console.error('Ошибка загрузки комнаты:', error);

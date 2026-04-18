@@ -59,7 +59,7 @@ export default function HomePage() {
             );
 
             // Перенаправляем на страницу настроек комнаты с room_id
-            const roomId = response.short_id || response.room_id;
+            const roomId = response.shortId || response.roomId;
             router.push(`/roomEdit?room_id=${roomId}`);
         } catch (error) {
             console.error('Ошибка создания комнаты:', error);
@@ -218,15 +218,15 @@ export default function HomePage() {
                         dataSource={rooms}
                         renderItem={(room) => {
                             // Безопасное получение ID комнаты
-                            const roomId = room.short_id || room.room_id || 'unknown';
+                            const roomId = room.shortId || room.roomId || 'unknown';
                             const displayId = roomId !== 'unknown' ? roomId.slice(0, 8) : 'N/A';
                             
                             // Значения по умолчанию для всех полей
                             const status = room.status || 'lobby';
-                            const currentPlayers = room.current_players ?? 0;
-                            const totalPlayers = room.total_players ?? 0;
-                            const humanPlayers = room.human_players ?? 0;
-                            const aiPlayers = room.ai_players ?? 0;
+                            const currentPlayers = room.currentPlayers ?? 0;
+                            const totalPlayers = room.totalPlayers ?? 0;
+                            const humanPlayers = room.humanPlayers ?? 0;
+                            const aiPlayers = room.aiPlayers ?? 0;
                             
                             return (
                                 <List.Item

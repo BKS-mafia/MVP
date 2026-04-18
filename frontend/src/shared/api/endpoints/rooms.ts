@@ -42,18 +42,18 @@ export interface RoomPlayer {
 }
 
 export interface RoomResponse {
-    room_id: string;
-    short_id?: string;
+    roomId: string;
+    shortId?: string;
     name: string;
     status: string;
-    total_players: number;
-    current_players: number;
-    human_players: number;
-    ai_players: number;
+    totalPlayers: number;
+    currentPlayers: number;
+    humanPlayers: number;
+    aiPlayers: number;
     settings: Record<string, unknown>;
     Players: RoomPlayer[];
     chats?: unknown[];
-    created_at?: string;
+    creationTime?: string;
 }
 
 // GET /rooms - получить список комнат (с фильтрацией по статусу)
