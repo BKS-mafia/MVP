@@ -23,6 +23,7 @@ class PlayerCreate(PlayerBase):
 class PlayerUpdate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     
+    room_id: Optional[int] = Field(alias="roomId", default=None)
     nickname: Optional[str] = None
     is_ai: Optional[bool] = Field(alias="isAI", default=None)
     role: Optional[str] = None

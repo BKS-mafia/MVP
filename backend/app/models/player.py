@@ -22,7 +22,7 @@ class Player(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     player_id = Column(String, unique=True, index=True, nullable=False)
-    room_id = Column(Integer, ForeignKey("rooms.id"), nullable=False)
+    room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True)
     nickname = Column(String, nullable=False)
     is_ai = Column(Boolean, default=False)
     role = Column(Enum(PlayerRole), nullable=True)

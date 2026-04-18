@@ -211,6 +211,16 @@ async def join_room(
             detail="Room not found",
         )
 
+    # Если передан sessionToken, пробуем найти существующего игрока
+    if player_in.session_token:
+        existing_player = await crud.player.get_by_session_token(db, session_token=player_in.session_token)
+        if existing_player:
+            # Обновляем room_id существующего игрока
+            existing_player.room_id = room.id
+            await db.commit()
+            await db.refresh(existing_player)
+            return existing_player
+
     # Устанавливаем внутренний DB-идентификатор комнаты для игрока
     player_in = player_in.model_copy(update={"room_id": room.id})
 

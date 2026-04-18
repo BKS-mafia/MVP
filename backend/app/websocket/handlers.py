@@ -32,12 +32,28 @@ async def websocket_endpoint(
         db, session_token=token
     )
     if not player:
+        logger.warning(f"WebSocket: игрок не найден по токену {token}")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    # Verify the player is in the specified room (room_id is public UUID, player.room_id is int FK)
-    room = await crud.room.get_by_room_id(db, room_id=room_id)
-    if not room or room.id != player.room_id:
+    # Verify the player is in the specified room
+    # room_id может быть как short_id (5 символов), так и public room_id (UUID)
+    if len(room_id) == 5 and room_id.isalnum():
+        # Это short_id
+        room = await crud.room.get_by_short_id(db, short_id=room_id)
+    else:
+        # Это public room_id (UUID)
+        room = await crud.room.get_by_room_id(db, room_id=room_id)
+    
+    if not room:
+        logger.warning(f"WebSocket: комната {room_id} не найдена")
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    
+    logger.info(f"WebSocket: player.room_id={player.room_id}, room.id={room.id}")
+    
+    if room.id != player.room_id:
+        logger.warning(f"WebSocket: игрок {player.id} не в комнате {room.id}, его room_id={player.room_id}")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 

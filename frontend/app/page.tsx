@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Button, Typography, Space, Card, message, Tag, List, Empty, Spin, Divider, Alert, Modal, Input } from 'antd';
 import { PlusOutlined, LinkOutlined, ReloadOutlined, UserOutlined, TeamOutlined, LogoutOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
-import { createRoom, getRooms, RoomResponse, getCurrentPlayerRoom, leaveGame, PlayerRoomResponse, registerNickname } from '@/src/shared/api/endpoints/rooms';
+import { createRoom, getRooms, RoomResponse, getCurrentPlayer, leaveGame, PlayerRoomResponse, registerNickname, CurrentPlayerResponse } from '@/src/shared/api/endpoints/rooms';
 import { getToken } from '@/src/shared/lib/getToken';
 
 const { Title, Text } = Typography;
@@ -18,6 +18,7 @@ export default function HomePage() {
     const [playerRoom, setPlayerRoom] = useState<PlayerRoomResponse | null>(null);
     const [checkingStatus, setCheckingStatus] = useState(true);
     const [leavingGame, setLeavingGame] = useState(false);
+    const [playerName, setPlayerName] = useState<string>('');
     
     // Состояние для модального окна регистрации никнейма
     const [isRegisterModalVisible, setIsRegisterModalVisible] = useState(false);
@@ -53,14 +54,32 @@ export default function HomePage() {
         try {
             const token = getToken();
             if (token) {
-                const roomInfo = await getCurrentPlayerRoom(token);
-                setPlayerRoom(roomInfo);
+                // Получаем информацию об игроке и комнате одним вызовом
+                const playerInfo = await getCurrentPlayer(token);
+                
+                // Устанавливаем имя игрока
+                setPlayerName(playerInfo.nickname || '');
+                
                 // Проверяем, зарегистрирован ли игрок
-                if (roomInfo.is_registered === false) {
+                if (playerInfo.is_registered === false) {
                     setIsPlayerRegistered(false);
                     setIsRegisterModalVisible(true);
                 } else {
                     setIsPlayerRegistered(true);
+                }
+                
+                // Устанавливаем информацию о комнате
+                if (playerInfo.in_room) {
+                    setPlayerRoom({
+                        in_room: true,
+                        room_id: playerInfo.room_id,
+                        short_id: playerInfo.short_id,
+                        room_name: playerInfo.room_name,
+                        status: playerInfo.status,
+                        is_registered: playerInfo.is_registered,
+                    });
+                } else {
+                    setPlayerRoom(null);
                 }
             }
         } catch (error: unknown) {
@@ -88,14 +107,32 @@ export default function HomePage() {
     const checkPlayerStatusWithToken = async (token: string) => {
         setCheckingStatus(true);
         try {
-            const roomInfo = await getCurrentPlayerRoom(token);
-            setPlayerRoom(roomInfo);
+            // Получаем информацию об игроке и комнате одним вызовом
+            const playerInfo = await getCurrentPlayer(token);
+            
+            // Устанавливаем имя игрока
+            setPlayerName(playerInfo.nickname || '');
+            
             // Проверяем, зарегистрирован ли игрок
-            if (roomInfo.is_registered === false) {
+            if (playerInfo.is_registered === false) {
                 setIsPlayerRegistered(false);
                 setIsRegisterModalVisible(true);
             } else {
                 setIsPlayerRegistered(true);
+            }
+            
+            // Устанавливаем информацию о комнате
+            if (playerInfo.in_room) {
+                setPlayerRoom({
+                    in_room: true,
+                    room_id: playerInfo.room_id,
+                    short_id: playerInfo.short_id,
+                    room_name: playerInfo.room_name,
+                    status: playerInfo.status,
+                    is_registered: playerInfo.is_registered,
+                });
+            } else {
+                setPlayerRoom(null);
             }
         } catch (error: unknown) {
             // Проверяем, если ошибка 404 - игрок не найден, показываем модальное окно регистрации
@@ -187,9 +224,19 @@ export default function HomePage() {
             // Очищаем URL от параметра session_token
             window.history.replaceState({}, document.title, window.location.pathname);
             
-            // Повторяем запрос к getCurrentPlayerRoom после успешной регистрации
-            const roomInfo = await getCurrentPlayerRoom(token);
-            setPlayerRoom(roomInfo);
+            // Повторяем запрос к getCurrentPlayer после успешной регистрации
+            const playerInfo = await getCurrentPlayer(token);
+            setPlayerName(playerInfo.nickname || '');
+            if (playerInfo.in_room) {
+                setPlayerRoom({
+                    in_room: true,
+                    room_id: playerInfo.room_id,
+                    short_id: playerInfo.short_id,
+                    room_name: playerInfo.room_name,
+                    status: playerInfo.status,
+                    is_registered: playerInfo.is_registered,
+                });
+            }
         } catch (error) {
             console.error('Ошибка регистрации:', error);
             messageApi.error('Не удалось сохранить никнейм. Попробуйте ещё раз.');
@@ -211,39 +258,10 @@ export default function HomePage() {
         }
     };
 
-    const handleCreateRoom = async () => {
-        setLoading(true);
-        try {
-            const hostToken = getToken();
-            if (!hostToken) {
-                messageApi.error('Ошибка идентификации. Перезагрузите страницу.');
-                setLoading(false);
-                return;
-            }
-
-            // Вызываем API создания комнаты с минимальными параметрами
-            const response = await createRoom(
-                hostToken,
-                8,  // totalPlayers
-                5,  // peopleCount
-                3,  // aiCount
-                [
-                    { name: 'Мирный', count: 4, canBeHuman: true, canBeAI: true },
-                    { name: 'Мафия', count: 2, canBeHuman: true, canBeAI: true },
-                    { name: 'Комиссар', count: 1, canBeHuman: true, canBeAI: true },
-                    { name: 'Доктор', count: 1, canBeHuman: true, canBeAI: true },
-                ]
-            );
-
-            // Перенаправляем на страницу настроек комнаты с room_id
-            const roomId = response.shortId || response.roomId;
-            router.push(`/roomEdit?room_id=${roomId}`);
-        } catch (error) {
-            console.error('Ошибка создания комнаты:', error);
-            messageApi.error('Не удалось создать комнату. Попробуйте позже.');
-        } finally {
-            setLoading(false);
-        }
+    const handleCreateRoom = () => {
+        // Перенаправляем на страницу настроек комнаты (без создания)
+        // Комната будет создана только после настройки параметров
+        router.push('/roomEdit');
     };
 
     const handleJoinRoom = () => {
@@ -449,6 +467,12 @@ export default function HomePage() {
                 <Text type="secondary" style={{ display: 'block', marginBottom: 48 }}>
                     Мафия с нейросетевыми игроками
                 </Text>
+                
+                {playerName && (
+                    <Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: '1.1rem' }}>
+                        Привет, {playerName}!
+                    </Text>
+                )}
 
                 <Space orientation="vertical" size="large" style={{ width: '100%' }}>
                     <Button

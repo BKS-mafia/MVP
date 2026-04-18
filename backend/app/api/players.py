@@ -16,16 +16,22 @@ async def register_player(
 ) -> schemas.Player:
     """
     Зарегистрировать никнейм игрока.
-    Используется при первом входе, когда игрок еще не имеет никнейма.
+    Если игрок не существует - создаёт нового игрока с указанным никнеймом.
     """
     player = await crud.player.get_by_session_token(
         db, session_token=registration_data.session_token
     )
+    
+    # Если игрок не найден - создаём нового
     if not player:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Player not found",
+        player = await crud.player.create(
+            db,
+            obj_in=schemas.PlayerCreate(
+                session_token=registration_data.session_token,
+                nickname=registration_data.nickname,
+            ),
         )
+        return player
     
     # Проверяем, что никнейм еще не установлен
     if player.nickname and not player.nickname.startswith("Player_"):
@@ -44,33 +50,14 @@ async def register_player(
     return player
 
 
-@router.get("/me", response_model=schemas.Player)
+@router.get("/me")
 async def get_current_player(
-    session_token: str,
-    db: AsyncSession = Depends(get_db),
-) -> schemas.Player:
-    """
-    Получить текущего игрока по session_token.
-    Используется для проверки статуса игрока на главном экране.
-    """
-    player = await crud.player.get_by_session_token(db, session_token=session_token)
-    if not player:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Player not found",
-        )
-    return player
-
-
-@router.get("/me/room")
-async def get_current_player_room(
     session_token: str,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
-    Получить информацию о комнате текущего игрока.
-    Возвращает информацию о комнате, если игрок в ней находится.
-    Также возвращает флаг is_registered, указывающий, зарегистрирован ли игрок (имеет ли никнейм).
+    Получить текущего игрока по session_token.
+    Возвращает информацию об игроке и комнате (если игрок в ней находится).
     """
     player = await crud.player.get_by_session_token(db, session_token=session_token)
     if not player:
@@ -82,25 +69,35 @@ async def get_current_player_room(
     # Проверяем, зарегистрирован ли игрок (имеет ли никнейм отличный от временного)
     is_registered = bool(player.nickname and not player.nickname.startswith("Player_"))
     
-    # Получаем комнату
-    room = await crud.room.get(db, id=player.room_id)
-    if not room:
-        return {
-            "in_room": False,
-            "room_id": None,
-            "short_id": None,
-            "room_name": None,
-            "status": None,
-            "is_registered": is_registered,
-        }
-    
-    return {
-        "in_room": True,
-        "room_id": room.room_id,
-        "short_id": room.short_id,
-        "room_name": room.short_id,
-        "status": room.status,
+    # Информация об игроке
+    player_info = {
+        "player_id": player.player_id,
+        "nickname": player.nickname,
+        "is_ai": player.is_ai,
         "is_registered": is_registered,
+    }
+    
+    # Получаем комнату
+    if player.room_id:
+        room = await crud.room.get(db, id=player.room_id)
+        if room:
+            return {
+                **player_info,
+                "in_room": True,
+                "room_id": room.room_id,
+                "short_id": room.short_id,
+                "room_name": room.short_id,
+                "status": room.status,
+            }
+    
+    # Игрок не в комнате
+    return {
+        **player_info,
+        "in_room": False,
+        "room_id": None,
+        "short_id": None,
+        "room_name": None,
+        "status": None,
     }
 
 
@@ -111,7 +108,7 @@ async def leave_game(
 ) -> None:
     """
     Покинуть текущую игру (выйти из комнаты).
-    Игрок удаляется из комнаты и базы данных.
+    Игрок остаётся в базе данных, только покидает комнату.
     """
     player = await crud.player.get_by_session_token(db, session_token=session_token)
     if not player:
@@ -119,6 +116,10 @@ async def leave_game(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Player not found",
         )
+    
+    # Если игрок не в комнате - просто выходим
+    if not player.room_id:
+        return
     
     room = await crud.room.get(db, id=player.room_id)
     if not room:
@@ -140,9 +141,6 @@ async def leave_game(
         },
     )
     
-    # Удаляем игрока из БД
-    await crud.player.delete(db, id=player.id)
-    
     # Обновляем счётчик игроков в комнате
     new_count = max(0, room.current_players - 1)
     human_delta = 0 if player.is_ai else 1
@@ -155,6 +153,13 @@ async def leave_game(
             human_players=max(0, room.human_players - human_delta),
             ai_players=max(0, room.ai_players - ai_delta),
         ),
+    )
+    
+    # Только очищаем room_id игрока, не удаляя его из БД
+    await crud.player.update(
+        db,
+        db_obj=player,
+        obj_in=schemas.PlayerUpdate(room_id=None),
     )
 
 

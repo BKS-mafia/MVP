@@ -85,7 +85,7 @@ const LobbySettings: React.FC<{ onStart?: (settings: GameSettingsDTO) => void }>
 
     const minPeople = useMemo(() => {
         const rawMin = totalPlayers - aiSlots;
-        return Math.max(1, rawMin);
+        return Math.max(0, rawMin);
     }, [totalPlayers, aiSlots]);
 
     const maxPeople = useMemo(() => Math.min(totalPlayers, humanSlots), [totalPlayers, humanSlots]);

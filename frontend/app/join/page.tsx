@@ -57,16 +57,18 @@ function JoinContent() {
             });
 
             // 2. Вызываем joinRoom для присоединения
+            // Используем существующий токен, если есть
+            const existingToken = getToken() || undefined;
             const nickname = `Player_${Math.floor(Math.random() * 10000)}`;
             
             const playerResponse = await joinRoom(
                 roomCode.trim(),
                 nickname,
-                false // не AI
+                false, // не AI
+                existingToken
             );
 
-            // Сохраняем текущего игрока с новым токеном сессии
-            const newSessionToken = playerResponse.sessionToken;
+            // Сохраняем текущего игрока
             setCurrentPlayer({
                 id: playerResponse.id,
                 player_id: playerResponse.playerId,
@@ -75,13 +77,8 @@ function JoinContent() {
                 is_alive: playerResponse.isAlive,
                 is_connected: playerResponse.isConnected,
                 role: playerResponse.role,
-                session_token: newSessionToken,
-            }, newSessionToken);
-
-            // Сохраняем токен в localStorage
-            if (typeof window !== 'undefined') {
-                localStorage.setItem('token', newSessionToken);
-            }
+                session_token: playerResponse.sessionToken,
+            }, playerResponse.sessionToken);
 
             // 3. Перенаправляем в лобби
             router.push(`/room/${roomCode.trim()}/lobby`);

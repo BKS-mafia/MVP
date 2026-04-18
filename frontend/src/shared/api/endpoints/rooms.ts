@@ -88,11 +88,14 @@ export interface JoinRoomResponse {
 }
 
 // POST /rooms/{room_id}/join - присоединиться к комнате
-export const joinRoom = async (roomId: string, nickname: string, isAi: boolean = false): Promise<JoinRoomResponse> => {
-    const requestData = {
+export const joinRoom = async (roomId: string, nickname: string, isAi: boolean = false, sessionToken?: string): Promise<JoinRoomResponse> => {
+    const requestData: { nickname: string; isAI: boolean; sessionToken?: string } = {
         nickname,
         isAI: isAi,  // Backend expects camelCase
     };
+    if (sessionToken) {
+        requestData.sessionToken = sessionToken;
+    }
     const response = await axiosInstance.post<JoinRoomResponse>(`/rooms/${roomId}/join`, requestData);
     return response.data;
 };
@@ -133,15 +136,18 @@ export const updateRoom = async (roomId: string, data: UpdateRoomRequest): Promi
 
 // Типы для работы с текущим игроком
 export interface CurrentPlayerResponse {
-    id: number;
-    playerId: string;
+    // Информация об игроке
+    player_id: string;
     nickname: string;
-    isAI: boolean;
-    isAlive: boolean;
-    isConnected: boolean;
-    role?: string;
-    sessionToken: string;
-    roomId: number;
+    is_ai: boolean;
+    is_registered: boolean;
+    
+    // Информация о комнате
+    in_room: boolean;
+    room_id?: string;
+    short_id?: string;
+    room_name?: string;
+    status?: string;
 }
 
 export interface PlayerRoomResponse {

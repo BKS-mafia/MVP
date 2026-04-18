@@ -4,22 +4,24 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useEffect, useState, Suspense } from 'react';
 import { message, Spin } from 'antd';
 import LobbySettings from "@/src/widget/LobbySettings";
-import { getRoom, updateRoom } from '@/src/shared/api/endpoints/rooms';
+import { getRoom, updateRoom, createRoom } from '@/src/shared/api/endpoints/rooms';
 import { useGameStore } from '@/src/shared/store/gameStore';
 import { GameSettingsDTO } from '@/src/widget/LobbySettings';
+import { getToken } from '@/src/shared/lib/getToken';
 
 function RoomEditContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const roomId = searchParams.get('room_id');
+    const isNewRoom = !roomId;
     const [loading, setLoading] = useState(false);
     const [messageApi, contextHolder] = message.useMessage();
     const { setRoom, setCurrentPlayer } = useGameStore();
 
     useEffect(() => {
+        // Если room_id есть - загружаем данные комнаты
         if (!roomId) {
-            messageApi.error('ID комнаты не найден. Создайте комнату заново.');
-            router.push('/');
+            // Новую комнату пока не создаём - это произойдёт при нажатии "Начать"
             return;
         }
 
@@ -48,23 +50,43 @@ function RoomEditContent() {
     }, [roomId, router, messageApi, setRoom]);
 
     const handleStart = async (settings: GameSettingsDTO) => {
-        if (!roomId) return;
-
         setLoading(true);
         try {
-            // Обновляем настройки комнаты
-            await updateRoom(roomId, {
-                totalPlayers: settings.totalPlayers,
-                peopleCount: settings.peopleCount,
-                aiCount: settings.aiCount,
-                roles: settings.roles.reduce((acc, role, index) => {
-                    acc[index.toString()] = role;
-                    return acc;
-                }, {} as Record<string, { name: string; count: number; canBeHuman: boolean; canBeAI: boolean }>),
-            });
-            
-            // Перенаправляем в лобби комнаты для ожидания игроков
-            router.push(`/room/${roomId}/lobby`);
+            if (isNewRoom) {
+                // Создаём новую комнату
+                const hostToken = getToken();
+                if (!hostToken) {
+                    messageApi.error('Ошибка идентификации. Перезагрузите страницу.');
+                    setLoading(false);
+                    return;
+                }
+
+                const response = await createRoom(
+                    hostToken,
+                    settings.totalPlayers,
+                    settings.peopleCount,
+                    settings.aiCount,
+                    settings.roles
+                );
+
+                // Перенаправляем в лобби созданной комнаты
+                const newRoomId = response.shortId || response.roomId;
+                router.push(`/room/${newRoomId}/lobby`);
+            } else {
+                // Обновляем настройки существующей комнаты
+                await updateRoom(roomId, {
+                    totalPlayers: settings.totalPlayers,
+                    peopleCount: settings.peopleCount,
+                    aiCount: settings.aiCount,
+                    roles: settings.roles.reduce((acc, role, index) => {
+                        acc[index.toString()] = role;
+                        return acc;
+                    }, {} as Record<string, { name: string; count: number; canBeHuman: boolean; canBeAI: boolean }>),
+                });
+                
+                // Перенаправляем в лобби комнаты для ожидания игроков
+                router.push(`/room/${roomId}/lobby`);
+            }
         } catch (error) {
             console.error('Ошибка сохранения настроек:', error);
             messageApi.error('Не удалось сохранить настройки. Попробуйте позже.');
@@ -72,14 +94,6 @@ function RoomEditContent() {
             setLoading(false);
         }
     };
-
-    if (!roomId) {
-        return (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-                <Spin size="large" />
-            </div>
-        );
-    }
 
     return (
         <div>
