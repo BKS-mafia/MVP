@@ -1,0 +1,7 @@
+.custom-slider-wrapper .ant-slider-rail {
+    background: transparent !important; /* скрываем стандартный rail, используем кастомный */
+}
+
+.custom-slider-wrapper .ant-slider-track {
+    background: transparent !important; /* убираем стандартный трек */
+}

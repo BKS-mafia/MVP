@@ -1,0 +1,76 @@
+// get room
+[
+  {
+    "roomId": "string",
+    "shortId": "string",
+    "hostToken": "string",
+    "status": "string",
+    "totalPlayers": "number",
+    "aiCount": "number",
+    "peopleCount": 5,
+    "currentPlayers": 5,
+    "Players": [
+        {
+            "userId": "string",
+            "name": "string",
+            "isAi": "bool",
+            "role": "string",
+            "is_alive": "bool",
+            "iconId": "number"
+        }
+
+    ],
+    "roles": {
+      "additionalProp1": {
+        "name": "string",
+        "count": 0,
+        "canBeHuman": true,
+        "canBeAI": true
+      },
+      "additionalProp2": {
+        "name": "string",
+        "count": 0,
+        "canBeHuman": true,
+        "canBeAI": true
+      },
+      "additionalProp3": {
+        "name": "string",
+        "count": 0,
+        "canBeHuman": true,
+        "canBeAI": true
+      }
+    },
+
+    "chats":[
+        {
+            "name": "string",
+            "countOfUnread": "number",
+            "events": [
+                {
+                    "eventChat": "string",
+                    "eventId":"string",
+                    "type":"string",
+                    "senderName": "string",
+                    "body":"string",
+                    "creationTime":"2026-04-18T15:16:34.171Z"
+                }
+            ]
+        }
+    ],
+
+    "creationTime": "2026-04-18T15:16:34.171Z",
+    "updateTime": "2026-04-18T15:16:34.172Z"
+  }
+]
+
+
+// event dto for webCam
+{
+    "eventChat": "string",
+    "eventId":"string",
+    "type":"string",
+    "senderName": "string",
+    "body":"string",
+    "creationTime":"2026-04-18T15:16:34.171Z"
+}
+
