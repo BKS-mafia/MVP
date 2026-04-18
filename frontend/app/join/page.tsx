@@ -60,18 +60,18 @@ const JoinPage: React.FC = () => {
             // Сохраняем текущего игрока
             setCurrentPlayer({
                 id: playerResponse.id,
-                player_id: playerResponse.player_id,
+                player_id: playerResponse.playerId,
                 nickname: playerResponse.nickname,
-                is_ai: playerResponse.is_ai,
-                is_alive: playerResponse.is_alive,
-                is_connected: playerResponse.is_connected,
+                is_ai: playerResponse.isAI,
+                is_alive: playerResponse.isAlive,
+                is_connected: playerResponse.isConnected,
                 role: playerResponse.role,
-                session_token: playerResponse.session_token,
-            }, playerResponse.session_token);
+                session_token: playerResponse.sessionToken,
+            }, playerResponse.sessionToken);
 
             // Сохраняем токен в localStorage
             if (typeof window !== 'undefined') {
-                localStorage.setItem('token', playerResponse.session_token);
+                localStorage.setItem('token', playerResponse.sessionToken);
             }
 
             // 3. Перенаправляем в лобби

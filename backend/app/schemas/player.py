@@ -6,7 +6,7 @@ from datetime import datetime
 class PlayerBase(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     
-    player_id: str = Field(alias="playerId")
+    player_id: Optional[str] = Field(alias="playerId", default=None)
     room_id: Optional[int] = Field(alias="roomId", default=None)
     nickname: str
     is_ai: bool = Field(alias="isAI", default=False)

@@ -72,26 +72,26 @@ export const getRoom = async (roomId: string): Promise<RoomResponse> => {
 // Типы для joinRoom
 export interface JoinRoomRequest {
     nickname: string;
-    is_ai?: boolean;
+    isAI?: boolean;
 }
 
 export interface JoinRoomResponse {
     id: number;
-    player_id: string;
+    playerId: string;
     nickname: string;
-    is_ai: boolean;
-    is_alive: boolean;
-    is_connected: boolean;
+    isAI: boolean;
+    isAlive: boolean;
+    isConnected: boolean;
     role?: string;
-    session_token: string;
-    room_id: number;
+    sessionToken: string;
+    roomId: number;
 }
 
 // POST /rooms/{room_id}/join - присоединиться к комнате
 export const joinRoom = async (roomId: string, nickname: string, isAi: boolean = false): Promise<JoinRoomResponse> => {
-    const requestData: JoinRoomRequest = {
+    const requestData = {
         nickname,
-        is_ai: isAi,
+        isAI: isAi,  // Backend expects camelCase
     };
     const response = await axiosInstance.post<JoinRoomResponse>(`/rooms/${roomId}/join`, requestData);
     return response.data;
