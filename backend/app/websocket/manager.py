@@ -32,7 +32,7 @@ class ConnectionManager:
         self.websocket_room[websocket] = room_id
         logger.info(f"WebSocket connected for player {player_id} in room {room_id}")
 
-    def disconnect(self, websocket: WebSocket):
+    async def disconnect(self, websocket: WebSocket):
         room_id = self.websocket_room.get(websocket)
         player_id = self.websocket_player.get(websocket)
         if room_id and room_id in self.active_connections:

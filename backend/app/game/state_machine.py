@@ -689,8 +689,8 @@ class StateMachine:
                 "type": "day_started",
                 "event": "phase_changed",
                 "phase": GamePhase.DAY.value,
-                "data": {"phase": "day", "day_number": self.night_number},
-                "day_number": self.night_summary.get("day_number", self.day_number),
+                "data": {"phase": "day", "day_number": self.day_number},
+                "day_number": self.day_number,
                 "night_results": {
                     "killed": self.night_summary.get("killed", []),
                     "healed": self.night_summary.get("healed", []),

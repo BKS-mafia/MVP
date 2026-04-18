@@ -89,7 +89,7 @@ class GameCRUD:
         """
         Обновить игру.
         """
-        update_data = obj_in.dict(exclude_unset=True)
+        update_data = obj_in.model_dump(exclude_unset=True)
         if not update_data:
             return db_obj
 

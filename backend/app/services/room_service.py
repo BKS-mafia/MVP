@@ -12,7 +12,7 @@ from app import schemas
 from app.crud.room import RoomCRUD
 from app.crud.player import PlayerCRUD
 from app.websocket.manager import ConnectionManager
-from app.models.room import Room as RoomModel
+from app.models.room import Room as RoomModel, RoomStatus
 from app.models.player import Player as PlayerModel
 from app.utils.short_id import generate_unique_short_id
 
@@ -170,7 +170,7 @@ class RoomService:
             raise ValueError(f"Комната с ID {room_id} не найдена")
 
         # Проверка, что комната не в статусе "playing" или "finished"
-        if room.status in ("playing", "finished"):
+        if room.status in (RoomStatus.PLAYING, RoomStatus.FINISHED):
             raise ValueError("Нельзя присоединиться к игре, которая уже началась или завершена")
 
         # Проверка максимального количества игроков
@@ -231,8 +231,8 @@ class RoomService:
             )
 
         # Проверка, что комната в статусе "lobby"
-        if room.status != "lobby":
-            raise ValueError(f"Комната не готова к началу игры (статус: {room.status})")
+        if room.status != RoomStatus.LOBBY:
+            raise ValueError(f"Комната не готова к началу игры (статус: {room.status.value})")
 
         # Обновление статуса комнаты
         updated_room = await self.room_crud.update(

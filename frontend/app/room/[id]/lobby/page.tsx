@@ -133,6 +133,9 @@ export default function LobbyPage() {
         };
 
         const handleGameStarted = (data: unknown) => {
+            console.log('Получено событие game_started:', data);
+            // Сбрасываем флаг запуска перед редиректом
+            setStarting(false);
             // Перенаправляем на страницу игры
             router.push(`/room/${roomId}`);
         };
@@ -153,7 +156,7 @@ export default function LobbyPage() {
             websocketClient.off('game_started', handleGameStarted);
             websocketClient.disconnect();
         };
-    }, [roomId, sessionToken, router, setConnected, addPlayer]);
+    }, [roomId, sessionToken, router, setConnected, addPlayer, setStarting]);
 
     // Обработчик старта игры (для хоста)
     const handleStartGame = useCallback(async () => {
@@ -161,16 +164,19 @@ export default function LobbyPage() {
         
         setStarting(true);
         try {
+            // Вызываем API старта игры
+            // Перенаправление на страницу игры произойдет после получения
+            // WebSocket события 'game_started' от сервера
             await startGame(roomId);
-            // Перенаправление произойдет через WebSocket событие или сразу
-            router.push(`/room/${roomId}`);
+            // Индикатор loading показывается через состояние starting
+            // Редирект обрабатывается в handleGameStarted WebSocket подписке
         } catch (error) {
             console.error('Ошибка старта игры:', error);
             messageApi.error('Не удалось начать игру. Убедитесь, что все игроки подключены.');
-        } finally {
             setStarting(false);
         }
-    }, [roomId, router, messageApi]);
+        // Не сбрасываем starting здесь - ждем WebSocket событие
+    }, [roomId, messageApi]);
 
     if (loading) {
         return (
@@ -183,7 +189,37 @@ export default function LobbyPage() {
     return (
         <div>
             {contextHolder}
-            {isHost && players.length >= 2 && (
+            {starting && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    zIndex: 2000,
+                }}>
+                    <div style={{
+                        backgroundColor: 'white',
+                        padding: '40px 60px',
+                        borderRadius: '12px',
+                        textAlign: 'center',
+                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+                    }}>
+                        <Spin size="large" style={{ marginBottom: 20 }} />
+                        <div style={{ fontSize: '18px', fontWeight: 500 }}>
+                            Игра запускается...
+                        </div>
+                        <div style={{ fontSize: '14px', color: '#666', marginTop: 8 }}>
+                            Ожидание подтверждения от сервера
+                        </div>
+                    </div>
+                </div>
+            )}
+            {isHost && players.length >= 2 && !starting && (
                 <div style={{
                     position: 'fixed',
                     top: 20,
@@ -195,7 +231,6 @@ export default function LobbyPage() {
                         size="large"
                         icon={<PlayCircleOutlined />}
                         onClick={handleStartGame}
-                        loading={starting}
                     >
                         Начать игру
                     </Button>
