@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Input, Button, Card, Typography, message } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
@@ -10,7 +10,7 @@ import { useGameStore } from '@/src/shared/store/gameStore';
 
 const { Title, Text } = Typography;
 
-const JoinPage: React.FC = () => {
+function JoinContent() {
     const [roomCode, setRoomCode] = useState('');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
@@ -143,6 +143,26 @@ const JoinPage: React.FC = () => {
             </Card>
         </div>
     );
-};
+}
 
-export default JoinPage;
+export default function JoinPage() {
+    return (
+        <Suspense fallback={
+            <div
+                style={{
+                    minHeight: '100vh',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+                }}
+            >
+                <Card style={{ width: '100%', maxWidth: 400, textAlign: 'center' }}>
+                    <Title level={2}>Загрузка...</Title>
+                </Card>
+            </div>
+        }>
+            <JoinContent />
+        </Suspense>
+    );
+}
