@@ -115,3 +115,62 @@ export const startGame = async (roomId: string): Promise<StartGameResponse> => {
     const response = await axiosInstance.post<StartGameResponse>(`/rooms/${roomId}/game/start`);
     return response.data;
 };
+
+// Типы для updateRoom
+export interface UpdateRoomRequest {
+    totalPlayers?: number;
+    aiCount?: number;
+    peopleCount?: number;
+    roles?: Record<string, RoleSettings>;
+    settings?: Record<string, unknown>;
+}
+
+// PATCH /rooms/{room_id} - обновить настройки комнаты
+export const updateRoom = async (roomId: string, data: UpdateRoomRequest): Promise<RoomResponse> => {
+    const response = await axiosInstance.patch<RoomResponse>(`/rooms/${roomId}`, data);
+    return response.data;
+};
+
+// Типы для работы с текущим игроком
+export interface CurrentPlayerResponse {
+    id: number;
+    playerId: string;
+    nickname: string;
+    isAI: boolean;
+    isAlive: boolean;
+    isConnected: boolean;
+    role?: string;
+    sessionToken: string;
+    roomId: number;
+}
+
+export interface PlayerRoomResponse {
+    in_room: boolean;
+    room_id?: string;
+    short_id?: string;
+    room_name?: string;
+    status?: string;
+}
+
+// GET /players/me - получить текущего игрока по session_token
+export const getCurrentPlayer = async (sessionToken: string): Promise<CurrentPlayerResponse> => {
+    const response = await axiosInstance.get<CurrentPlayerResponse>('/players/me', {
+        params: { session_token: sessionToken },
+    });
+    return response.data;
+};
+
+// GET /players/me/room - получить информацию о комнате текущего игрока
+export const getCurrentPlayerRoom = async (sessionToken: string): Promise<PlayerRoomResponse> => {
+    const response = await axiosInstance.get<PlayerRoomResponse>('/players/me/room', {
+        params: { session_token: sessionToken },
+    });
+    return response.data;
+};
+
+// DELETE /players/me - покинуть игру (выйти из комнаты)
+export const leaveGame = async (sessionToken: string): Promise<void> => {
+    await axiosInstance.delete('/players/me', {
+        params: { session_token: sessionToken },
+    });
+};

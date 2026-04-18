@@ -4,8 +4,9 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useEffect, useState, Suspense } from 'react';
 import { message, Spin } from 'antd';
 import LobbySettings from "@/src/widget/LobbySettings";
-import { getRoom, startGame } from '@/src/shared/api/endpoints/rooms';
+import { getRoom, updateRoom } from '@/src/shared/api/endpoints/rooms';
 import { useGameStore } from '@/src/shared/store/gameStore';
+import { GameSettingsDTO } from '@/src/widget/LobbySettings';
 
 function RoomEditContent() {
     const router = useRouter();
@@ -46,19 +47,27 @@ function RoomEditContent() {
         loadRoom();
     }, [roomId, router, messageApi, setRoom]);
 
-    const handleStart = async (settings: unknown) => {
+    const handleStart = async (settings: GameSettingsDTO) => {
         if (!roomId) return;
 
         setLoading(true);
         try {
-            // Вызываем API старта игры
-            await startGame(roomId);
+            // Обновляем настройки комнаты
+            await updateRoom(roomId, {
+                totalPlayers: settings.totalPlayers,
+                peopleCount: settings.peopleCount,
+                aiCount: settings.aiCount,
+                roles: settings.roles.reduce((acc, role, index) => {
+                    acc[index.toString()] = role;
+                    return acc;
+                }, {} as Record<string, { name: string; count: number; canBeHuman: boolean; canBeAI: boolean }>),
+            });
             
-            // Перенаправляем в лобби комнаты
+            // Перенаправляем в лобби комнаты для ожидания игроков
             router.push(`/room/${roomId}/lobby`);
         } catch (error) {
-            console.error('Ошибка старта игры:', error);
-            messageApi.error('Не удалось начать игру. Попробуйте позже.');
+            console.error('Ошибка сохранения настроек:', error);
+            messageApi.error('Не удалось сохранить настройки. Попробуйте позже.');
         } finally {
             setLoading(false);
         }

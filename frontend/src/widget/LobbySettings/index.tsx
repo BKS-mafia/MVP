@@ -210,8 +210,8 @@ const LobbySettings: React.FC<{ onStart?: (settings: GameSettingsDTO) => void }>
             );
             console.log(response)
             messageApi.success(`Комната создана! ID: ${response.shortId || response.roomId}`);
-            // сохраняем room_id или short_id для редиректа
-            router.push(`/room/${response.shortId}`);
+            // Перенаправляем в лобби комнаты для ожидания игроков
+            router.push(`/room/${response.shortId}/lobby`);
         } catch (error) {
             console.error('Ошибка создания комнаты:', error);
             messageApi.error('Не удалось создать комнату. Попробуйте позже.');

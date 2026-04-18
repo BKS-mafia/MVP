@@ -7,7 +7,7 @@ import { PlayCircleOutlined } from '@ant-design/icons';
 
 import './Lobby.css';
 import Lobby from "@/src/widget/Lobby";
-import { getPlayers, startGame, RoomPlayer } from '@/src/shared/api/endpoints/rooms';
+import { getRoom, getPlayers, startGame, RoomPlayer } from '@/src/shared/api/endpoints/rooms';
 import { websocketClient } from '@/src/shared/api/websocket';
 import { useGameStore } from '@/src/shared/store/gameStore';
 import { getToken } from '@/src/shared/lib/getToken';
@@ -33,6 +33,7 @@ export default function LobbyPage() {
         room,
         currentPlayer,
         sessionToken,
+        setRoom,
         setPlayers: setStorePlayers,
         setConnected,
         addPlayer,
@@ -42,12 +43,27 @@ export default function LobbyPage() {
     // Проверка, является ли текущий игрок хостом
     const isHost = currentPlayer?.session_token === getToken();
 
-    // Загрузка игроков при монтировании
+    // Загрузка данных комнаты и игроков при монтировании
     useEffect(() => {
-        const loadPlayers = async () => {
+        const loadData = async () => {
             if (!roomId) return;
             
             try {
+                // Загружаем данные комнаты
+                const roomData = await getRoom(roomId);
+                setRoom({
+                    room_id: roomData.roomId,
+                    short_id: roomData.shortId,
+                    name: roomData.name,
+                    status: roomData.status as 'lobby' | 'starting' | 'playing' | 'finished',
+                    total_players: roomData.totalPlayers,
+                    current_players: roomData.currentPlayers,
+                    human_players: roomData.humanPlayers,
+                    ai_players: roomData.aiPlayers,
+                });
+                setMaxPlayers(roomData.totalPlayers);
+                
+                // Загружаем игроков
                 const playersData = await getPlayers(roomId);
                 
                 // Преобразуем данные игроков в формат для отображения
@@ -68,21 +84,16 @@ export default function LobbyPage() {
                     role: p.role,
                     session_token: p.session_token,
                 })));
-                
-                // Получаем данные комнаты для maxPlayers
-                if (room) {
-                    setMaxPlayers(room.total_players);
-                }
             } catch (error) {
-                console.error('Ошибка загрузки игроков:', error);
-                messageApi.error('Не удалось загрузить список игроков');
+                console.error('Ошибка загрузки данных:', error);
+                messageApi.error('Не удалось загрузить данные комнаты');
             } finally {
                 setLoading(false);
             }
         };
 
-        loadPlayers();
-    }, [roomId, room, setStorePlayers, messageApi]);
+        loadData();
+    }, [roomId, setRoom, setStorePlayers, messageApi]);
 
     // Подключение к WebSocket
     useEffect(() => {
@@ -156,7 +167,7 @@ export default function LobbyPage() {
             websocketClient.off('game_started', handleGameStarted);
             websocketClient.disconnect();
         };
-    }, [roomId, sessionToken, router, setConnected, addPlayer, setStarting]);
+    }, [roomId, sessionToken, router, setConnected, addPlayer, setStarting, setRoom]);
 
     // Обработчик старта игры (для хоста)
     const handleStartGame = useCallback(async () => {
