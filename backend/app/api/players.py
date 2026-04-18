@@ -9,6 +9,41 @@ from app.websocket.manager import manager
 router = APIRouter()
 
 
+@router.post("/me/register", response_model=schemas.Player)
+async def register_player(
+    registration_data: schemas.PlayerRegister,
+    db: AsyncSession = Depends(get_db),
+) -> schemas.Player:
+    """
+    Зарегистрировать никнейм игрока.
+    Используется при первом входе, когда игрок еще не имеет никнейма.
+    """
+    player = await crud.player.get_by_session_token(
+        db, session_token=registration_data.session_token
+    )
+    if not player:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Player not found",
+        )
+    
+    # Проверяем, что никнейм еще не установлен
+    if player.nickname and not player.nickname.startswith("Player_"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Player already has a nickname",
+        )
+    
+    # Обновляем никнейм
+    player = await crud.player.update(
+        db,
+        db_obj=player,
+        obj_in=schemas.PlayerUpdate(nickname=registration_data.nickname),
+    )
+    
+    return player
+
+
 @router.get("/me", response_model=schemas.Player)
 async def get_current_player(
     session_token: str,

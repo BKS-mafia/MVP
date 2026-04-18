@@ -41,3 +41,11 @@ class PlayerInDBBase(PlayerBase):
 
 class Player(PlayerInDBBase):
     pass
+
+
+class PlayerRegister(BaseModel):
+    """Схема для регистрации никнейма игрока."""
+    model_config = ConfigDict(populate_by_name=True)
+    
+    session_token: str = Field(alias="sessionToken")
+    nickname: str
