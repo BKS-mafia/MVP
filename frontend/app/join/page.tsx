@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Input, Button, Card, Typography, message } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { getRoom, joinRoom } from '@/src/shared/api/endpoints/rooms';
@@ -14,8 +14,17 @@ const JoinPage: React.FC = () => {
     const [roomCode, setRoomCode] = useState('');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [messageApi, contextHolder] = message.useMessage();
     const { setRoom, setCurrentPlayer, setPlayers } = useGameStore();
+
+    // Извлечение параметра code из URL при загрузке страницы
+    useEffect(() => {
+        const codeFromUrl = searchParams.get('code');
+        if (codeFromUrl) {
+            setRoomCode(codeFromUrl);
+        }
+    }, [searchParams]);
 
     const handleJoin = async () => {
         if (!roomCode.trim()) {
@@ -48,7 +57,6 @@ const JoinPage: React.FC = () => {
             });
 
             // 2. Вызываем joinRoom для присоединения
-            const token = getToken();
             const nickname = `Player_${Math.floor(Math.random() * 10000)}`;
             
             const playerResponse = await joinRoom(
@@ -57,7 +65,8 @@ const JoinPage: React.FC = () => {
                 false // не AI
             );
 
-            // Сохраняем текущего игрока
+            // Сохраняем текущего игрока с новым токеном сессии
+            const newSessionToken = playerResponse.sessionToken;
             setCurrentPlayer({
                 id: playerResponse.id,
                 player_id: playerResponse.playerId,
@@ -66,12 +75,12 @@ const JoinPage: React.FC = () => {
                 is_alive: playerResponse.isAlive,
                 is_connected: playerResponse.isConnected,
                 role: playerResponse.role,
-                session_token: playerResponse.sessionToken,
-            }, playerResponse.sessionToken);
+                session_token: newSessionToken,
+            }, newSessionToken);
 
             // Сохраняем токен в localStorage
             if (typeof window !== 'undefined') {
-                localStorage.setItem('token', playerResponse.sessionToken);
+                localStorage.setItem('token', newSessionToken);
             }
 
             // 3. Перенаправляем в лобби

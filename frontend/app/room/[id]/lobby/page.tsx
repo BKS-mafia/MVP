@@ -86,10 +86,16 @@ export default function LobbyPage() {
 
     // Подключение к WebSocket
     useEffect(() => {
-        if (!roomId || !sessionToken) return;
+        // Используем токен из store или из localStorage как резервный
+        const token = sessionToken || getToken();
+        
+        if (!roomId || !token) {
+            console.warn('No token available for WebSocket connection');
+            return;
+        }
 
         // Подключаемся к WebSocket
-        websocketClient.connect(roomId, sessionToken);
+        websocketClient.connect(roomId, token);
         setConnected(true);
 
         // Обработчики событий

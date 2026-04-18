@@ -96,10 +96,16 @@ export default function RoomPage() {
 
     // Подключение к WebSocket
     useEffect(() => {
-        if (!roomId || !sessionToken || loading) return;
+        // Используем токен из store или из localStorage как резервный
+        const token = sessionToken || getToken();
+        
+        if (!roomId || !token || loading) {
+            console.warn('No token available for WebSocket connection');
+            return;
+        }
 
         // Подключаемся к WebSocket
-        websocketClient.connect(roomId, sessionToken);
+        websocketClient.connect(roomId, token);
         setConnected(true);
 
         // Обработчики событий
@@ -297,7 +303,8 @@ export default function RoomPage() {
 
     // Обработчик отправки сообщения
     const handleSendMessage = useCallback((text: string, chatName?: string) => {
-        if (!text.trim() || !sessionToken) return;
+        const token = sessionToken || getToken();
+        if (!text.trim() || !token) return;
         
         websocketClient.send({
             type: 'send_message',
@@ -308,7 +315,8 @@ export default function RoomPage() {
 
     // Обработчик голосования
     const handleVote = useCallback((targetPlayerId: number, votingId: string) => {
-        if (!sessionToken) return;
+        const token = sessionToken || getToken();
+        if (!token) return;
         
         websocketClient.send({
             type: 'vote',
