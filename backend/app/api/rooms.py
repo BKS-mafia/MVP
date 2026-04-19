@@ -99,7 +99,8 @@ async def create_room(
         # DEBUG: Логирование для диагностики MissingGreenlet
         logger.debug(f"Room created: id={room.id}, room_id={room.room_id}")
         logger.debug(f"  created_at type: {type(room.created_at)}, value: {room.created_at}")
-        logger.debug(f"  updated_at type: {type(room.updated_at)}, value: {room.updated_at}")
+        # Avoid accessing updated_at directly to prevent greenlet issues
+        # logger.debug(f"  updated_at type: {type(room.updated_at)}, value: {room.updated_at}")
         
         # Явное преобразование в Pydantic схему для избежания проблем с greenlet
         room_schema = schemas.Room.model_validate(room)
