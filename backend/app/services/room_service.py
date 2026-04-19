@@ -5,7 +5,8 @@
 Валидирует бизнес-правила (максимальное количество игроков, статусы комнаты).
 """
 import logging
-from typing import Optional, Dict, Any
+import random
+from typing import Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import schemas
@@ -16,6 +17,33 @@ from app.models.room import Room as RoomModel, RoomStatus
 from app.models.player import Player as PlayerModel
 from app.utils.short_id import generate_unique_short_id
 from datetime import datetime, timezone
+
+# Загружаем имена для AI игроков
+AI_NAMES = [
+    "Саня Белый", "Витя Антибиотик", "Игорь Николаевич (Шеф)", "Лёха Гвоздь",
+    "Вова Утюг", "Толян Седой", "Михалыч", "Жека Мотор", "Макс Лютый",
+    "Паша Циркач", "Костя Кот", "Антон Студент", "Борис Бритва", "Вадим Хирург",
+    "Гена Крокодил", "Гоша Артист", "Егор Мясник", "Кирилл Мажор", "Лёня Хитрый",
+    "Марк Француз", "Матвей Тихий", "Никита Бес", "Коля Боксер", "Олег Снайпер",
+    "Петя Глухой", "Серега Кирпич", "Степан Барон", "Тимур Зверь", "Федя Кувалда",
+    "Юра Шаман", "Ярик Псих", "Марат", "Артурчик", "Алик", "Давид Маркович",
+    "Славик Немой", "Димон", "Саныч", "Петрович", "Иваныч", "Пал Палыч",
+    "Степаныч", "Григорьич", "Васильич", "Андреич", "Сергеич", "Катя Вдова",
+    "Оксана Игла", "Аня Тихая", "Лера Комета", "Алиса Лиса", "Настя Рыжая",
+    "Вика Пантера", "Даша Тень", "Женя Сталь", "Лена Блонди", "Жанна Козырь",
+    "Сонька Золотая", "Ира Льдинка", "Ксюша Мелочь", "Люба Фартовая", "Марина Сирена",
+    "Маша Кукла", "Надя Акула", "Наташа Искра", "Нина Строгая", "Оля Царица",
+    "Полина Петарда", "Света Ночь", "Таня Гроза", "Юля Химера", "Валентин Эдуардович",
+    "Рома (Ромео)", "Илья Профессор", "Валера Космос", "Эдик", "Сеня", "Жора",
+    "Виталик", "Руслан Северный", "Антоха", "Глеб", "Дэн", "Захар", "Макар",
+    "Прохор", "Савва", "Тарас", "Ян", "Агата", "Диана", "Ева", "Инна", "Кира",
+    "Рита", "Роза", "Эля", "Яна", "Лёша Шрам", "Саня Граф", "Витя Сейф",
+    "Дима Бухгалтер", "Миша Север", "Артем Факир", "Влад Крест", "Гарик",
+    "Герман Львович", "Даня Шустрый", "Денис Бульдог", "Игнат", "Клим", "Леон",
+    "Митяй", "Платон", "Ростик", "Сева", "Тимофей Батя", "Филипп Фил", "Эмиль",
+    "Юлий", "Яков Яша", "Аделина", "Анжела", "Белла", "Влада", "Галина Галя",
+    "Дина", "Злата", "Карина", "Лада", "Милана", "Ника", "Регина", "Снежана", "Эльвира"
+]
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +72,7 @@ class RoomService:
         room_create: schemas.RoomCreate,
     ) -> RoomModel:
         """
-        Создать новую комнату с валидацией.
+        Создать новую комнату с валидацией и AI игроками.
         """
         logger.debug(f"RoomService.create_room called with: total_players={room_create.total_players}, ai_count={room_create.ai_count}, people_count={room_create.people_count}")
         
@@ -69,9 +97,59 @@ class RoomService:
         await self.update_last_activity(db, room.id)
         logger.debug("update_last_activity completed")
         
+        # Создаём AI игроков, если указано их количество
+        if room_create.ai_count > 0:
+            await self._create_ai_players(db, room.id, room_create.ai_count)
+        
         logger.info(f"Создана комната {room.id} с room_id={room.room_id}")
         # Уведомление через WebSocket не требуется, так как нет подключённых клиентов
         return room
+
+    async def _create_ai_players(
+        self,
+        db: AsyncSession,
+        room_id: int,
+        ai_count: int,
+    ) -> List[PlayerModel]:
+        """
+        Создать AI игроков для комнаты.
+        """
+        logger.debug(f"Creating {ai_count} AI players for room {room_id}")
+        
+        # Выбираем случайные имена для AI игроков
+        available_names = AI_NAMES.copy()
+        random.shuffle(available_names)
+        selected_names = available_names[:ai_count]
+        
+        created_players = []
+        for i, name in enumerate(selected_names):
+            player = await self.player_crud.create(
+                db,
+                obj_in=schemas.PlayerCreate(
+                    room_id=room_id,
+                    nickname=name,
+                    is_ai=True,
+                    is_alive=True,
+                    is_connected=True,
+                )
+            )
+            created_players.append(player)
+            logger.debug(f"Created AI player: {player.id} - {player.nickname}")
+        
+        # Обновляем счётчики в комнате
+        room = await self.room_crud.get(db, id=room_id)
+        if room:
+            await self.room_crud.update(
+                db,
+                db_obj=room,
+                obj_in=schemas.RoomUpdate(
+                    current_players=room.current_players + ai_count,
+                    ai_players=room.ai_players + ai_count,
+                ),
+            )
+        
+        logger.info(f"Created {len(created_players)} AI players for room {room_id}")
+        return created_players
 
     async def get_room(
         self,
