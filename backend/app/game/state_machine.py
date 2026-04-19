@@ -281,11 +281,18 @@ class StateMachine:
             except Exception as e:
                 logger.error(f"Failed to save chat event: {e}")
 
-        # Разослать всем игрокам комнаты
+        # Разослать всем игрокам комнаты - используем формат как в handlers.py!
+        # Формат: {type: "chat_event", player_id, nickname, content, is_ai, is_mafia_channel, clientMessageId}
+        client_message_id = f"ai-{player_id}-{int(current_time * 1000)}"
         logger.info(f"Broadcasting chat message from player {player_id}: {content}")
         await self._broadcast({
-            "event": "chat_message",
-            "data": msg,
+            "type": "chat_event",
+            "player_id": player_id,
+            "nickname": player.nickname or f"Player{player_id}",
+            "content": content,
+            "is_ai": True,
+            "is_mafia_channel": False,  # AI сообщения идут в общий чат
+            "clientMessageId": client_message_id,
         })
         return {"ok": True}
 
