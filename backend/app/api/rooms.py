@@ -107,27 +107,34 @@ async def create_room(
         
         # Явное преобразование в Pydantic схему - используем model_validate с from_attributes
         # Сначала получаем все необходимые атрибуты в явном виде, чтобы избежать синхронного доступа к БД
-        # Исправление: парсим JSON поля и используем правильные имена с alias
+        # Исправление: используем явный SELECT для избежания MissingGreenlet
+        from sqlalchemy import select
+        from app.models.room import Room as RoomModel
+        stmt = select(RoomModel).where(RoomModel.id == room.id)
+        result = await db.execute(stmt)
+        room_fresh = result.scalar_one()
+        
+        # Теперь безопасно получаем все атрибуты
         room_data = {
-            "id": room.id,
-            "room_id": room.room_id,
-            "short_id": room.short_id,
-            "host_token": room.host_token,
+            "id": room_fresh.id,
+            "room_id": room_fresh.room_id,
+            "short_id": room_fresh.short_id,
+            "host_token": room_fresh.host_token,
             # Исправление: добавлено поле name
-            "name": room.name if room.name else "Комната Мафии",
-            "status": room.status.value if hasattr(room.status, 'value') else room.status,
-            "total_players": room.total_players,
-            "ai_count": room.ai_count,
-            "people_count": room.people_count,
+            "name": room_fresh.name if room_fresh.name else "Комната Мафии",
+            "status": room_fresh.status.value if hasattr(room_fresh.status, 'value') else room_fresh.status,
+            "total_players": room_fresh.total_players,
+            "ai_count": room_fresh.ai_count,
+            "people_count": room_fresh.people_count,
             # Исправление: парсим JSON строки в объекты
-            "roles": json.loads(room.roles) if room.roles else None,
-            "chats": json.loads(room.chats) if room.chats else [],
-            "current_players": room.current_players,
-            "ai_players": room.ai_players,
-            "human_players": room.human_players,
-            "settings": json.loads(room.settings) if room.settings else None,
-            "created_at": room.created_at,
-            "updated_at": room.updated_at,
+            "roles": json.loads(room_fresh.roles) if room_fresh.roles else None,
+            "chats": json.loads(room_fresh.chats) if room_fresh.chats else [],
+            "current_players": room_fresh.current_players,
+            "ai_players": room_fresh.ai_players,
+            "human_players": room_fresh.human_players,
+            "settings": json.loads(room_fresh.settings) if room_fresh.settings else None,
+            "created_at": room_fresh.created_at,
+            "updated_at": room_fresh.updated_at,
         }
         
         # Теперь создаём Pydantic объект из словаря - это безопасно

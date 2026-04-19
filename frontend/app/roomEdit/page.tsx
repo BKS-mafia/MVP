@@ -4,7 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useEffect, useState, Suspense } from 'react';
 import { message, Spin } from 'antd';
 import LobbySettings from "@/src/widget/LobbySettings";
-import { getRoom, updateRoom, createRoom } from '@/src/shared/api/endpoints/rooms';
+import { getRoom, updateRoom, createRoom, joinRoom } from '@/src/shared/api/endpoints/rooms';
 import { useGameStore } from '@/src/shared/store/gameStore';
 import { GameSettingsDTO } from '@/src/widget/LobbySettings';
 import { getToken } from '@/src/shared/lib/getToken';
@@ -84,6 +84,35 @@ function RoomEditContent() {
                     setLoading(false);
                     return;
                 }
+
+                // ИСПРАВЛЕНИЕ: После создания комнаты создаём игрока-хоста
+                // Это необходимо для работы WebSocket - сервер ищет игрока по session_token
+                try {
+                    const nickname = `Host_${Math.floor(Math.random() * 10000)}`;
+                    const playerResponse = await joinRoom(
+                        newRoomId,
+                        nickname,
+                        false, // не AI
+                        hostToken // передаём hostToken как sessionToken для поиска существующего игрока
+                    );
+
+                    // Сохраняем текущего игрока в store
+                    setCurrentPlayer({
+                        id: playerResponse.id,
+                        player_id: playerResponse.playerId,
+                        nickname: playerResponse.nickname,
+                        is_ai: playerResponse.isAI,
+                        is_alive: playerResponse.isAlive,
+                        is_connected: playerResponse.isConnected,
+                        role: playerResponse.role,
+                        session_token: playerResponse.sessionToken,
+                    }, playerResponse.sessionToken);
+                } catch (joinError) {
+                    console.error('Ошибка при создании игрока-хоста:', joinError);
+                    // Продолжаем редирект даже если не удалось создать игрока
+                    // Возможно игрок уже существует (при повторном входе)
+                }
+
                 router.push(`/room/${newRoomId}/lobby`);
             } else {
                 // Обновляем настройки существующей комнаты

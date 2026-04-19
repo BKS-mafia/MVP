@@ -98,13 +98,26 @@ export default function LobbyPage() {
 
     // Подключение к WebSocket
     useEffect(() => {
-        // Используем токен из store или из localStorage как резервный
+        // ИСПРАВЛЕНИЕ: Приоритет - sessionToken из store (установлен при создании/входе в комнату)
+        // Затем - токен из localStorage (может быть host_token или session_token)
+        // Важно: sessionToken из store содержит правильный session_token игрока для WebSocket
         const token = sessionToken || getToken();
         
         if (!roomId || !token) {
-            console.warn('No token available for WebSocket connection');
+            console.warn('No token available for WebSocket connection', {
+                sessionToken: !!sessionToken,
+                localStorageToken: !!getToken()
+            });
             return;
         }
+
+        // Логируем для отладки
+        console.log('WebSocket подключение с токеном:', {
+            roomId,
+            hasSessionToken: !!sessionToken,
+            hasLocalStorageToken: !!getToken(),
+            tokenPreview: token ? token.substring(0, 20) + '...' : null
+        });
 
         // Подключаемся к WebSocket
         websocketClient.connect(roomId, token);
