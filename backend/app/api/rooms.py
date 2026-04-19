@@ -68,6 +68,9 @@ async def list_rooms(
     - skip: количество комнат для пропуска (пагинация)
     - limit: максимальное количество комнат для возврата
     """
+    # Очищаем пустые лобби перед возвратом списка
+    await room_service.cleanup_empty_rooms(db)
+    
     if status:
         # Фильтрация по конкретному статусу
         rooms = await crud.room.get_by_status(db, status=status, skip=skip, limit=limit)

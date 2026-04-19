@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { message, Spin, Button } from 'antd';
-import { PlayCircleOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, LogoutOutlined } from '@ant-design/icons';
+import axios from 'axios';
 
 import './Lobby.css';
 import Lobby from "@/src/widget/Lobby";
@@ -189,6 +190,25 @@ export default function LobbyPage() {
         // Не сбрасываем starting здесь - ждем WebSocket событие
     }, [roomId, messageApi]);
 
+    // Обработчик выхода из лобби
+    const handleLeaveLobby = useCallback(async () => {
+        const token = getToken();
+        if (!token) {
+            messageApi.error('Токен не найден');
+            return;
+        }
+
+        try {
+            const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '/api';
+            await axios.delete(`${BACKEND_URL}/players/me?session_token=${token}`);
+            // При успешном ответе (204) перенаправляем на главную страницу
+            router.push('/');
+        } catch (error) {
+            console.error('Ошибка выхода из лобби:', error);
+            messageApi.error('Не удалось выйти из лобби');
+        }
+    }, [messageApi, router]);
+
     if (loading) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -230,6 +250,22 @@ export default function LobbyPage() {
                     </div>
                 </div>
             )}
+            {/* Кнопка выхода из лобби */}
+            <div style={{
+                position: 'fixed',
+                top: 20,
+                left: 20,
+                zIndex: 1000
+            }}>
+                <Button
+                    danger
+                    size="large"
+                    icon={<LogoutOutlined />}
+                    onClick={handleLeaveLobby}
+                >
+                    Выйти из лобби
+                </Button>
+            </div>
             {isHost && players.length >= 2 && !starting && (
                 <div style={{
                     position: 'fixed',

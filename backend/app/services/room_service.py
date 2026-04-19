@@ -15,8 +15,12 @@ from app.websocket.manager import ConnectionManager
 from app.models.room import Room as RoomModel, RoomStatus
 from app.models.player import Player as PlayerModel
 from app.utils.short_id import generate_unique_short_id
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
+
+# Время в минутах для автоудаления пустых комнат
+EMPTY_ROOM_TIMEOUT_MINUTES = 3
 
 
 class RoomService:
@@ -55,6 +59,10 @@ class RoomService:
         # Проверка уникальности room_id (если требуется) - можно добавить проверку в CRUD
         # Пока создаём комнату
         room = await self.room_crud.create(db, obj_in=room_create)
+        
+        # Обновляем last_activity при создании
+        await self.update_last_activity(db, room.id)
+        
         logger.info(f"Создана комната {room.id} с room_id={room.room_id}")
         # Уведомление через WebSocket не требуется, так как нет подключённых клиентов
         return room
@@ -165,6 +173,9 @@ class RoomService:
         """
         Добавить игрока в комнату с проверкой доступности мест.
         """
+        # Сначала очищаем пустые комнаты
+        await self.cleanup_empty_rooms(db)
+        
         room = await self.room_crud.get(db, id=room_id)
         if not room:
             raise ValueError(f"Комната с ID {room_id} не найдена")
@@ -185,7 +196,7 @@ class RoomService:
         player = await self.player_crud.create(db, obj_in=player_create)
         logger.info(f"Игрок {player.id} присоединился к комнате {room_id}")
 
-        # Обновляем счётчик игроков в комнате
+        # Обновляем счётчик игроков в комнате и last_activity
         await self.room_crud.update(
             db,
             db_obj=room,
@@ -195,6 +206,9 @@ class RoomService:
                 ai_players=room.ai_players + (1 if player_create.is_ai else 0),
             ),
         )
+        
+        # Обновляем last_activity
+        await self.update_last_activity(db, room_id)
 
         # Уведомляем всех в комнате о новом игроке
         await self.ws_manager.broadcast_to_room(
@@ -259,6 +273,46 @@ class RoomService:
             "players": players,
             "message": "Игра начата",
         }
+
+    async def cleanup_empty_rooms(
+        self,
+        db: AsyncSession,
+        timeout_minutes: int = EMPTY_ROOM_TIMEOUT_MINUTES,
+    ) -> int:
+        """
+        Удалить пустые лобби, где нет игроков и last_activity истёк.
+        Возвращает количество удалённых комнат.
+        """
+        empty_rooms = await self.room_crud.get_empty_lobbies(
+            db, timeout_minutes=timeout_minutes
+        )
+        
+        deleted_count = 0
+        for room in empty_rooms:
+            try:
+                await self.delete_room(db, room_id=room.id)
+                deleted_count += 1
+                logger.info(
+                    f"Удалена пустая комната {room.id} "
+                    f"(room_id={room.room_id}, без активности {timeout_minutes} мин)"
+                )
+            except Exception as e:
+                logger.error(f"Ошибка при удалении комнаты {room.id}: {e}")
+        
+        return deleted_count
+
+    async def update_last_activity(
+        self,
+        db: AsyncSession,
+        room_id: int,
+    ) -> None:
+        """
+        Обновить поле last_activity для комнаты.
+        """
+        room = await self.room_crud.get(db, id=room_id)
+        if room:
+            room.last_activity = datetime.now(timezone.utc)
+            await db.commit()
 
 
 # Глобальный экземпляр сервиса для удобства (можно использовать dependency injection)

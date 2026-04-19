@@ -1,4 +1,6 @@
 """
+from datetime import datetime, timezone, timedelta
+
 CRUD операции для модели Room.
 """
 from typing import Optional, List
@@ -253,3 +255,19 @@ class RoomCRUD:
         await db.delete(room)
         await db.commit()
         return room
+
+    async def get_empty_lobbies(self, db: AsyncSession, *, timeout_minutes: int = 3) -> List[RoomModel]:
+        """
+        Получить пустые лобби, где last_activity истекла более timeout_minutes назад.
+        """
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+        stmt = (
+            select(RoomModel)
+            .where(
+                RoomModel.status == RoomStatus.LOBBY,
+                RoomModel.current_players == 0,
+                RoomModel.last_activity < cutoff_time
+            )
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()

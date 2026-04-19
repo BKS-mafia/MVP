@@ -7,6 +7,7 @@ from app.models.player import Player as PlayerModel, PlayerRole
 from app.models.game_event import GameEvent
 from app.game.state_machine import GamePhase
 from app.services.game_service import game_service
+from app.services.room_service import room_service
 import json
 import logging
 from typing import Dict, Any, List, Optional
@@ -127,6 +128,19 @@ async def _handle_disconnect(
             f"Player {player.id} ({player.nickname!r}) disconnected "
             f"(no active game in room {room_id})"
         )
+    
+    # Обновляем last_activity комнаты
+    await room_service.update_last_activity(db, room_id)
+    
+    # Проверяем, нужно ли удалить пустую комнату
+    room = await crud.room.get(db, id=room_id)
+    if room and room.status.value == "lobby" and room.current_players == 0:
+        # Проверяем, прошло ли 3 минуты с last_activity
+        from datetime import datetime, timezone, timedelta
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=3)
+        if room.last_activity and room.last_activity < cutoff_time:
+            await room_service.delete_room(db, room_id=room_id)
+            logger.info(f"Auto-deleted empty lobby room {room_id} after 3 minutes of inactivity")
 
 
 async def handle_websocket_message(

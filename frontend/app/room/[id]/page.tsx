@@ -54,6 +54,12 @@ export default function RoomPage() {
                     ai_players: roomData.aiPlayers,
                 });
 
+                // Проверка статуса комнаты и редирект в лобби при необходимости
+                if (roomData.status === 'lobby') {
+                    router.push(`/room/${roomId}/lobby`);
+                    return;
+                }
+
                 // Загружаем игроков
                 const playersData = await getPlayers(roomId);
                 setStorePlayers(playersData.map((p) => ({
