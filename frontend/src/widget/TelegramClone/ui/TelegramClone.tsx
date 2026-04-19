@@ -1,43 +1,197 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, createElement } from 'react';
 import { useParams } from 'next/navigation';
 import { Layout, ConfigProvider } from 'antd';
 import { ChatSidebar } from './ChatSidebar';
 import { ChatArea } from './ChatArea';
-import { mockChats, getChatData, mockPlayers } from '../model/mockData';
+import { getToken } from '@/src/shared/lib/getToken';
+import { websocketClient } from '@/src/shared/api/websocket';
 import type { ChatMessageType, SystemNotificationType } from '@/src/entities/chat';
 import { VotingMessage } from '@/src/entities/voting';
+import type { Chat, ChatData, ChatEventMessage, ChatEventExtendedMessage, GhostChatMessage } from '../model/types';
+import { TeamOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
+
+// Алиас для createElement
+const createEl = createElement;
 
 const { Sider, Content } = Layout;
-const CURRENT_USER_ID = 'user-1';
-const CURRENT_USER_NAME = 'Алексей';
+
+// Маппинг типов чатов из бекенда
+const CHAT_NAME_MAPPING: Record<string, string> = {
+    'cityGroup': 'general',
+    'mafiaGroup': 'mafia',
+    'roleChat': 'commissioner',
+};
+
+const BACKEND_CHAT_MAPPING: Record<string, string> = {
+    'general': 'cityGroup',
+    'mafia': 'mafiaGroup',
+    'commissioner': 'roleChat',
+};
 
 export const TelegramClone: React.FC = () => {
     const params = useParams();
-    const roomId = params.id;
+    const roomId = params.id as string;
+    const token = getToken();
 
-    const [chats, setChats] = useState(mockChats);
+    // Состояние чатов
+    const [chats, setChats] = useState<Chat[]>([
+        { id: 'general', name: 'Общий чат', type: 'general', icon: createEl(TeamOutlined), lastMessage: '', lastMessageTime: '', unread: 0 },
+        { id: 'mafia', name: 'Шёпот мафии', type: 'mafia', icon: createEl(LockOutlined), lastMessage: '', lastMessageTime: '', unread: 0 },
+        { id: 'commissioner', name: 'Комиссар', type: 'commissioner', icon: createEl(UserOutlined), lastMessage: '', lastMessageTime: '', unread: 0 },
+    ]);
     const [selectedChatId, setSelectedChatId] = useState<string>('general');
     const [searchQuery, setSearchQuery] = useState('');
     const [newMessageText, setNewMessageText] = useState('');
 
-    // Данные выбранного чата
-    const [chatData, setChatData] = useState(getChatData(selectedChatId));
-    const [votingMessages, setVotingMessages] = useState<VotingMessage[]>(chatData.votingMessages);
+    // Данные сообщений для каждого чата
+    const [chatMessages, setChatMessages] = useState<Record<string, ChatMessageType[]>>({});
+    const [chatNotifications, setChatNotifications] = useState<Record<string, SystemNotificationType[]>>({});
+    const [votingMessages, setVotingMessages] = useState<VotingMessage[]>([]);
 
-    // Обновляем данные при смене чата
+    // Текущий ID пользователя (получим из WebSocket при подключении)
+    const currentUserIdRef = useRef<number | null>(null);
+    const currentUserNameRef = useRef<string>('');
+
+    // Подключение к WebSocket при монтировании
     useEffect(() => {
-        const data = getChatData(selectedChatId);
-        setChatData(data);
-        setVotingMessages(data.votingMessages);
-    }, [selectedChatId]);
+        if (!roomId || !token) {
+            console.warn('No roomId or token available');
+            return;
+        }
+
+        console.log('Connecting to WebSocket:', { roomId, token });
+
+        // Подключаемся к WebSocket
+        websocketClient.connect(roomId, token);
+
+        // Подписка на входящие сообщения
+        const handleChatEvent = (data: unknown) => {
+            const message = data as ChatEventMessage;
+            console.log('Received chat_event:', message);
+            
+            // Определяем ID чата на основе is_mafia_channel
+            const chatId = message.is_mafia_channel ? 'mafia' : 'general';
+            
+            const newMessage: ChatMessageType = {
+                id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                userId: String(message.player_id),
+                userName: message.nickname,
+                text: message.content,
+                timestamp: Date.now(),
+                isOwn: false,
+            };
+
+            setChatMessages(prev => ({
+                ...prev,
+                [chatId]: [...(prev[chatId] || []), newMessage],
+            }));
+
+            // Обновляем lastMessage в списке чатов
+            setChats(prev => prev.map(chat =>
+                chat.id === chatId
+                    ? { ...chat, lastMessage: message.content, lastMessageTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+                    : chat
+            ));
+        };
+
+        const handleChatEventExtended = (data: unknown) => {
+            const message = data as ChatEventExtendedMessage;
+            console.log('Received chat_event_extended:', message);
+            
+            // Маппим имя чата из бекенда в локальный ID
+            const chatId = CHAT_NAME_MAPPING[message.chatName] || message.chatName;
+            
+            const newMessage: ChatMessageType = {
+                id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                userId: String(message.player_id),
+                userName: message.nickname,
+                text: message.body,
+                timestamp: Date.now(),
+                isOwn: false,
+            };
+
+            setChatMessages(prev => ({
+                ...prev,
+                [chatId]: [...(prev[chatId] || []), newMessage],
+            }));
+
+            // Обновляем lastMessage в списке чатов
+            setChats(prev => prev.map(chat =>
+                chat.id === chatId
+                    ? { ...chat, lastMessage: message.body, lastMessageTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+                    : chat
+            ));
+        };
+
+        const handleGhostChatMessage = (data: unknown) => {
+            const message = data as GhostChatMessage;
+            console.log('Received ghost_chat_message:', message);
+            
+            const newMessage: ChatMessageType = {
+                id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                userId: String(message.data.sender_id),
+                userName: `👻 ${message.data.sender_name}`,
+                text: message.data.content,
+                timestamp: Date.now(),
+                isOwn: false,
+            };
+
+            // Призраки показываются в общем чате
+            setChatMessages(prev => ({
+                ...prev,
+                'general': [...(prev['general'] || []), newMessage],
+            }));
+
+            setChats(prev => prev.map(chat =>
+                chat.id === 'general'
+                    ? { ...chat, lastMessage: message.data.content, lastMessageTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+                    : chat
+            ));
+        };
+
+        const handleConnect = (data: unknown) => {
+            console.log('WebSocket connected:', data);
+        };
+
+        const handleDisconnect = (data: unknown) => {
+            console.log('WebSocket disconnected:', data);
+        };
+
+        const handleError = (error: unknown) => {
+            console.error('WebSocket error:', error);
+        };
+
+        // Регистрируем обработчики
+        websocketClient.on('chat_event', handleChatEvent);
+        websocketClient.on('chat_event_extended', handleChatEventExtended);
+        websocketClient.on('ghost_chat_message', handleGhostChatMessage);
+        websocketClient.on('connect', handleConnect);
+        websocketClient.on('disconnect', handleDisconnect);
+        websocketClient.on('error', handleError);
+
+        // Отписка при размонтировании
+        return () => {
+            websocketClient.off('chat_event', handleChatEvent);
+            websocketClient.off('chat_event_extended', handleChatEventExtended);
+            websocketClient.off('ghost_chat_message', handleGhostChatMessage);
+            websocketClient.off('connect', handleConnect);
+            websocketClient.off('disconnect', handleDisconnect);
+            websocketClient.off('error', handleError);
+            websocketClient.disconnect();
+        };
+    }, [roomId, token]);
+
+    // Получаем данные для текущего чата
+    const currentMessages = chatMessages[selectedChatId] || [];
+    const currentNotifications = chatNotifications[selectedChatId] || [];
 
     // Объединяем всё в хронологическом порядке
     const allItems = useMemo(() => {
         const items: (ChatMessageType | SystemNotificationType | { type: 'voting'; data: VotingMessage })[] = [
-            ...chatData.messages,
-            ...chatData.notifications,
+            ...currentMessages,
+            ...currentNotifications,
             ...votingMessages.map(vm => ({ type: 'voting' as const, data: vm })),
         ];
         return items.sort((a, b) => {
@@ -45,43 +199,82 @@ export const TelegramClone: React.FC = () => {
             const bTime = 'timestamp' in b ? b.timestamp : 0;
             return aTime - bTime;
         });
-    }, [chatData.messages, chatData.notifications, votingMessages]);
+    }, [currentMessages, currentNotifications, votingMessages]);
 
-    const handleSendMessage = () => {
+    const handleSendMessage = useCallback(() => {
         if (!newMessageText.trim()) return;
-        const newMessage: ChatMessageType = {
-            id: `msg-${Date.now()}`,
-            userId: CURRENT_USER_ID,
-            userName: CURRENT_USER_NAME,
+
+        // Определяем тип сообщения на основе выбранного чата
+        let wsMessage: { type: string; content?: string; chatName?: string; body?: string };
+        
+        if (selectedChatId === 'general') {
+            wsMessage = {
+                type: 'chat_message',
+                content: newMessageText.trim(),
+            };
+        } else if (selectedChatId === 'mafia') {
+            wsMessage = {
+                type: 'chat_message_extended',
+                chatName: 'mafiaGroup',
+                body: newMessageText.trim(),
+            };
+        } else if (selectedChatId === 'commissioner') {
+            wsMessage = {
+                type: 'chat_message_extended',
+                chatName: 'roleChat',
+                body: newMessageText.trim(),
+            };
+        } else {
+            wsMessage = {
+                type: 'chat_message',
+                content: newMessageText.trim(),
+            };
+        }
+
+        // Отправляем сообщение через WebSocket
+        websocketClient.send(wsMessage);
+
+        // Добавляем сообщение в локальное состояние (оно придёт обратно от сервера)
+        // Но для мгновенного отображения добавим локально
+        const localMessage: ChatMessageType = {
+            id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            userId: currentUserIdRef.current ? String(currentUserIdRef.current) : 'local',
+            userName: currentUserNameRef.current || 'Вы',
             text: newMessageText.trim(),
             timestamp: Date.now(),
             isOwn: true,
         };
-        // Обновляем локальные данные (в реальном приложении отправляем на бэк)
-        chatData.messages.push(newMessage);
-        setChatData({ ...chatData });
+
+        setChatMessages(prev => ({
+            ...prev,
+            [selectedChatId]: [...(prev[selectedChatId] || []), localMessage],
+        }));
+
+        // Обновляем lastMessage в списке чатов
         setChats(prev => prev.map(chat =>
             chat.id === selectedChatId
-                ? { ...chat, lastMessage: newMessage.text, lastMessageTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+                ? { ...chat, lastMessage: newMessageText.trim(), lastMessageTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
                 : chat
         ));
+
         setNewMessageText('');
-    };
+    }, [newMessageText, selectedChatId]);
 
     const handleVote = useCallback((selectedUserId: string, votingId: string) => {
         setVotingMessages(prev => prev.filter(vm => vm.id !== votingId));
-        const votedPlayer = mockPlayers.find(p => p.userId === selectedUserId);
-        if (votedPlayer) {
-            const newNotification: SystemNotificationType = {
-                id: `vote-result-${Date.now()}`,
-                type: 'phase_change',
-                message: `🗳️ Вы проголосовали за ${votedPlayer.userName}`,
-                timestamp: Date.now(),
-            };
-            chatData.notifications.push(newNotification);
-            setChatData({ ...chatData });
-        }
-    }, [chatData]);
+        
+        const newNotification: SystemNotificationType = {
+            id: `vote-result-${Date.now()}`,
+            type: 'phase_change',
+            message: `🗳️ Вы проголосовали за пользователя`,
+            timestamp: Date.now(),
+        };
+
+        setChatNotifications(prev => ({
+            ...prev,
+            [selectedChatId]: [...(prev[selectedChatId] || []), newNotification],
+        }));
+    }, [selectedChatId]);
 
     const handleSelectChat = (chatId: string) => {
         setSelectedChatId(chatId);
