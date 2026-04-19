@@ -5,11 +5,14 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 import json
 import uuid
+import logging
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app import schemas
 from app.models.room import Room as RoomModel, RoomStatus
 from app.utils.short_id import generate_unique_short_id
+
+logger = logging.getLogger(__name__)
 
 
 class RoomCRUD:
@@ -21,6 +24,8 @@ class RoomCRUD:
         """
         Создать новую комнату.
         """
+        logger.debug(f"RoomCRUD.create called with obj_in: {obj_in.model_dump()}")
+        
         # Статус автоматически устанавливается в "lobby" при создании
         status_enum = RoomStatus.LOBBY
 
@@ -63,6 +68,8 @@ class RoomCRUD:
             room_id=room_id,
             short_id=short_id,
             host_token=host_token,
+            # Исправление: добавлено поле name
+            name=obj_in.name if obj_in.name else "Комната Мафии",
             status=status_enum,
             total_players=obj_in.total_players,
             ai_count=obj_in.ai_count,
@@ -76,7 +83,15 @@ class RoomCRUD:
         )
         db.add(room)
         await db.commit()
-        await db.refresh(room)
+        
+        # Вместо db.refresh() делаем явный SELECT для избежания MissingGreenlet
+        # db.refresh() может вызывать синхронную загрузку связанных объектов
+        stmt = select(RoomModel).where(RoomModel.id == room.id)
+        result = await db.execute(stmt)
+        room = result.scalar_one()
+        
+        logger.debug(f"Room created in DB: id={room.id}, room_id={room.room_id}, short_id={room.short_id}")
+        
         return room
 
     async def get(self, db: AsyncSession, id: int) -> Optional[RoomModel]:
@@ -239,8 +254,12 @@ class RoomCRUD:
             setattr(db_obj, field, value)
 
         await db.commit()
-        await db.refresh(db_obj)
-        return db_obj
+        
+        # Вместо db.refresh() делаем явный SELECT для избежания MissingGreenlet
+        stmt = select(RoomModel).where(RoomModel.id == db_obj.id)
+        result = await db.execute(stmt)
+        updated_obj = result.scalar_one()
+        return updated_obj
 
     async def delete(self, db: AsyncSession, *, id: int) -> Optional[RoomModel]:
         """

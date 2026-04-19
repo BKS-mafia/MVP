@@ -46,6 +46,8 @@ class RoomService:
         """
         Создать новую комнату с валидацией.
         """
+        logger.debug(f"RoomService.create_room called with: total_players={room_create.total_players}, ai_count={room_create.ai_count}, people_count={room_create.people_count}")
+        
         # Валидация количества игроков
         if room_create.total_players > 20:
             raise ValueError("Общее количество игроков не может превышать 20")
@@ -58,10 +60,14 @@ class RoomService:
 
         # Проверка уникальности room_id (если требуется) - можно добавить проверку в CRUD
         # Пока создаём комнату
+        logger.debug("Calling room_crud.create...")
         room = await self.room_crud.create(db, obj_in=room_create)
+        logger.debug(f"room_crud.create returned: id={room.id}, room_id={room.room_id}")
         
         # Обновляем last_activity при создании
+        logger.debug("Calling update_last_activity...")
         await self.update_last_activity(db, room.id)
+        logger.debug("update_last_activity completed")
         
         logger.info(f"Создана комната {room.id} с room_id={room.room_id}")
         # Уведомление через WebSocket не требуется, так как нет подключённых клиентов

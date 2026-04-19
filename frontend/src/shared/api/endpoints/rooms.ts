@@ -10,15 +10,33 @@ const rolesArrayToObject = (roles: RoleSettings[]): Record<string, RoleSettings>
     return obj;
 };
 
+// Вспомогательная функция для преобразования snake_case в camelCase
+const toCamelCase = (obj: any): any => {
+    if (Array.isArray(obj)) {
+        return obj.map(toCamelCase);
+    }
+    if (obj !== null && typeof obj === 'object') {
+        return Object.keys(obj).reduce((result, key) => {
+            const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+            result[camelKey] = toCamelCase(obj[key]);
+            return result;
+        }, {} as any);
+    }
+    return obj;
+};
+
 export const createRoom = async (
     host_token: string,
     totalPlayers: number,
     peopleCount: number,
     aiCount: number,
-    rolesArray: RoleSettings[]
+    rolesArray: RoleSettings[],
+    name?: string
 ): Promise<CreateRoomResponse> => {
     const requestData: CreateRoomRequest = {
         host_token,
+        // Исправление: добавлено поле name
+        name: name || "Комната Мафии",
         totalPlayers,
         peopleCount,
         aiCount,
@@ -26,7 +44,8 @@ export const createRoom = async (
         settings: {},
     };
     const response = await axiosInstance.post<CreateRoomResponse>('/rooms/', requestData);
-    return response.data;
+    // Исправление: преобразуем ответ из snake_case в camelCase
+    return toCamelCase(response.data);
 };
 
 // Типы для ответа getRoom
@@ -60,13 +79,15 @@ export interface RoomResponse {
 export const getRooms = async (status?: string): Promise<RoomResponse[]> => {
     const params = status ? { status } : {};
     const response = await axiosInstance.get<RoomResponse[]>('/rooms/', { params });
-    return response.data;
+    // Исправление: преобразуем ответ из snake_case в camelCase
+    return toCamelCase(response.data);
 };
 
 // GET /rooms/{room_id} - получить комнату
 export const getRoom = async (roomId: string): Promise<RoomResponse> => {
     const response = await axiosInstance.get<RoomResponse>(`/rooms/${roomId}`);
-    return response.data;
+    // Исправление: преобразуем ответ из snake_case в camelCase
+    return toCamelCase(response.data);
 };
 
 // Типы для joinRoom
@@ -121,6 +142,8 @@ export const startGame = async (roomId: string): Promise<StartGameResponse> => {
 
 // Типы для updateRoom
 export interface UpdateRoomRequest {
+    // Исправление: добавлено поле name
+    name?: string;
     totalPlayers?: number;
     aiCount?: number;
     peopleCount?: number;
@@ -131,7 +154,8 @@ export interface UpdateRoomRequest {
 // PATCH /rooms/{room_id} - обновить настройки комнаты
 export const updateRoom = async (roomId: string, data: UpdateRoomRequest): Promise<RoomResponse> => {
     const response = await axiosInstance.patch<RoomResponse>(`/rooms/${roomId}`, data);
-    return response.data;
+    // Исправление: преобразуем ответ из snake_case в camelCase
+    return toCamelCase(response.data);
 };
 
 // Типы для работы с текущим игроком

@@ -201,12 +201,14 @@ const LobbySettings: React.FC<{ onStart?: (settings: GameSettingsDTO) => void }>
         }));
 
         try {
+            // Исправление: передаём имя комнаты
             const response = await createRoom(
                 hostToken,
                 totalPlayers,
                 peopleCount,
                 aiCount,
-                rolesForBackend
+                rolesForBackend,
+                "Комната Мафии"
             );
             console.log(response)
             messageApi.success(`Комната создана! ID: ${response.shortId || response.roomId}`);

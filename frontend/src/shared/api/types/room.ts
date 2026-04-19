@@ -10,6 +10,8 @@ export type RolesObject = Record<string, RoleSettings>;
 
 export interface CreateRoomRequest {
     host_token: string;        // вместо userId
+    // Исправление: добавлено поле name
+    name?: string;
     totalPlayers: number;
     aiCount: number;
     peopleCount: number;
@@ -19,6 +21,8 @@ export interface CreateRoomRequest {
 
 export interface CreateRoomResponse {
     hostToken: string;
+    // Исправление: добавлено поле name
+    name: string;
     status: 'lobby' | 'archiv' | 'active';
     totalPlayers: number;
     aiCount: number;

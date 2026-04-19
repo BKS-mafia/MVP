@@ -28,7 +28,11 @@ class GameEventCRUD:
         )
         db.add(event)
         await db.commit()
-        await db.refresh(event)
+        
+        # Вместо db.refresh() делаем явный SELECT для избежания MissingGreenlet
+        stmt = select(GameEventModel).where(GameEventModel.id == event.id)
+        result = await db.execute(stmt)
+        event = result.scalar_one()
         return event
 
     async def get(self, db: AsyncSession, id: int) -> Optional[GameEventModel]:

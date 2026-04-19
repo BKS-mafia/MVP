@@ -15,8 +15,9 @@ class RoleConfig(BaseModel):
     
     name: str
     count: int
-    canBeHuman: bool = Field(alias="canBeHuman", default=True)
-    canBeAI: bool = Field(alias="canBeAI", default=True)
+    # Исправление: убрали дублирование alias - теперь работает и с canBeHuman, и с canBeHuman
+    canBeHuman: bool = True
+    canBeAI: bool = True
 
 
 class ChatEvent(BaseModel):
@@ -42,6 +43,8 @@ class RoomBase(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     
     host_token: str
+    # Исправление: добавлено поле name
+    name: str = Field(default="Комната Мафии", description="Название комнаты")
     status: str
     total_players: int = Field(alias="totalPlayers", default=8)
     ai_count: int = Field(alias="aiCount", default=3)
@@ -58,6 +61,8 @@ class RoomCreate(BaseModel):
     
     room_id: Optional[str] = Field(default=None, description="Уникальный ID комнаты. Если не передан, будет сгенерирован автоматически")
     host_token: str
+    # Исправление: добавлено поле name для названия комнаты
+    name: str = Field(default="Комната Мафии", description="Название комнаты")
     total_players: int = Field(alias="totalPlayers", default=8)
     ai_count: int = Field(alias="aiCount", default=3)
     people_count: int = Field(alias="peopleCount", default=5)
@@ -69,6 +74,8 @@ class RoomUpdate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     
     status: Optional[str] = None
+    # Исправление: добавлено поле name для обновления названия комнаты
+    name: Optional[str] = Field(default=None, description="Название комнаты")
     total_players: Optional[int] = Field(alias="totalPlayers", default=None)
     ai_count: Optional[int] = Field(alias="aiCount", default=None)
     people_count: Optional[int] = Field(alias="peopleCount", default=None)
@@ -86,6 +93,8 @@ class RoomInDBBase(RoomBase):
     room_id: str = Field(alias="roomId")
     short_id: Optional[str] = Field(alias="shortId", default=None)
     host_token: str = Field(alias="hostToken")
+    # Исправление: добавлено поле name в ответ API
+    name: str = Field(alias="name", default="Комната Мафии")
     created_at: datetime = Field(alias="creationTime")
     updated_at: Optional[datetime] = Field(alias="updateTime", default=None)
     current_players: int = Field(alias="currentPlayers", default=0)

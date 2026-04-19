@@ -9,6 +9,11 @@ import { useGameStore } from '@/src/shared/store/gameStore';
 import { GameSettingsDTO } from '@/src/widget/LobbySettings';
 import { getToken } from '@/src/shared/lib/getToken';
 
+// Исправление: добавляем поле name в интерфейс
+export interface GameSettingsDTOWithName extends GameSettingsDTO {
+    name?: string;
+}
+
 function RoomEditContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -61,16 +66,24 @@ function RoomEditContent() {
                     return;
                 }
 
+                // Исправление: передаём имя комнаты
                 const response = await createRoom(
                     hostToken,
                     settings.totalPlayers,
                     settings.peopleCount,
                     settings.aiCount,
-                    settings.roles
+                    settings.roles,
+                    "Комната Мафии"
                 );
 
                 // Перенаправляем в лобби созданной комнаты
+                // Исправление: используем правильное поле shortId
                 const newRoomId = response.shortId || response.roomId;
+                if (!newRoomId) {
+                    messageApi.error('Не удалось получить ID комнаты.');
+                    setLoading(false);
+                    return;
+                }
                 router.push(`/room/${newRoomId}/lobby`);
             } else {
                 // Обновляем настройки существующей комнаты

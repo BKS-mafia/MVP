@@ -19,6 +19,8 @@ class Room(Base):
     room_id = Column(String, unique=True, index=True, nullable=False)
     short_id = Column(String, unique=True, index=True, nullable=True, default=None)
     host_token = Column(String, unique=True, nullable=False)
+    # Исправление: добавлено поле name для названия комнаты
+    name = Column(String, nullable=True, default="Комната Мафии")
     status = Column(Enum(RoomStatus), default=RoomStatus.LOBBY)
     total_players = Column(Integer, default=8)
     ai_count = Column(Integer, default=3)

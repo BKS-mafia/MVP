@@ -49,7 +49,11 @@ class PlayerCRUD:
         )
         db.add(player)
         await db.commit()
-        await db.refresh(player)
+        
+        # Вместо db.refresh() делаем явный SELECT для избежания MissingGreenlet
+        stmt = select(PlayerModel).where(PlayerModel.id == player.id)
+        result = await db.execute(stmt)
+        player = result.scalar_one()
         return player
 
     async def get(self, db: AsyncSession, id: int) -> Optional[PlayerModel]:
@@ -112,8 +116,12 @@ class PlayerCRUD:
             setattr(db_obj, field, value)
 
         await db.commit()
-        await db.refresh(db_obj)
-        return db_obj
+        
+        # Вместо db.refresh() делаем явный SELECT для избежания MissingGreenlet
+        stmt = select(PlayerModel).where(PlayerModel.id == db_obj.id)
+        result = await db.execute(stmt)
+        updated_obj = result.scalar_one()
+        return updated_obj
 
     async def delete(self, db: AsyncSession, *, id: int) -> Optional[PlayerModel]:
         """

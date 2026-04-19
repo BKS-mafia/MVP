@@ -1,3 +1,4 @@
+import json
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
@@ -93,22 +94,55 @@ async def create_room(
     """
     Создать новую комнату.
     """
+    # Логируем входящие данные для диагностики
+    logger.info(f"create_room called with: {room_in.model_dump()}")
+    
     try:
+        logger.debug("Calling room_service.create_room...")
         room = await room_service.create_room(db, room_create=room_in)
+        logger.debug(f"room_service.create_room returned: id={room.id}")
         
         # DEBUG: Логирование для диагностики MissingGreenlet
         logger.debug(f"Room created: id={room.id}, room_id={room.room_id}")
-        logger.debug(f"  created_at type: {type(room.created_at)}, value: {room.created_at}")
-        logger.debug(f"  updated_at type: {type(room.updated_at)}, value: {room.updated_at}")
         
-        # Явное преобразование в Pydantic схему для избежания проблем с greenlet
-        room_schema = schemas.Room.model_validate(room)
+        # Явное преобразование в Pydantic схему - используем model_validate с from_attributes
+        # Сначала получаем все необходимые атрибуты в явном виде, чтобы избежать синхронного доступа к БД
+        # Исправление: парсим JSON поля и используем правильные имена с alias
+        room_data = {
+            "id": room.id,
+            "room_id": room.room_id,
+            "short_id": room.short_id,
+            "host_token": room.host_token,
+            # Исправление: добавлено поле name
+            "name": room.name if room.name else "Комната Мафии",
+            "status": room.status.value if hasattr(room.status, 'value') else room.status,
+            "total_players": room.total_players,
+            "ai_count": room.ai_count,
+            "people_count": room.people_count,
+            # Исправление: парсим JSON строки в объекты
+            "roles": json.loads(room.roles) if room.roles else None,
+            "chats": json.loads(room.chats) if room.chats else [],
+            "current_players": room.current_players,
+            "ai_players": room.ai_players,
+            "human_players": room.human_players,
+            "settings": json.loads(room.settings) if room.settings else None,
+            "created_at": room.created_at,
+            "updated_at": room.updated_at,
+        }
+        
+        # Теперь создаём Pydantic объект из словаря - это безопасно
+        # Исправление: используем model_validate для корректной обработки alias
+        room_schema = schemas.Room.model_validate(room_data)
         return room_schema
         
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except IntegrityError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Room with such parameters already exists")
+    except Exception as e:
+        # Логируем полную трассировку для диагностики
+        logger.error(f"Error creating room: {type(e).__name__}: {e}", exc_info=True)
+        raise
 
 
 # ── GET /{room_id} — получить комнату ────────────────────────────────────────
@@ -233,7 +267,13 @@ async def join_room(
             # Обновляем room_id существующего игрока
             existing_player.room_id = room.id
             await db.commit()
-            await db.refresh(existing_player)
+            
+            # Вместо db.refresh() делаем явный SELECT для избежания MissingGreenlet
+            from sqlalchemy import select
+            from app.models.player import Player as PlayerModel
+            stmt = select(PlayerModel).where(PlayerModel.id == existing_player.id)
+            result = await db.execute(stmt)
+            existing_player = result.scalar_one()
             return existing_player
 
     # Устанавливаем внутренний DB-идентификатор комнаты для игрока

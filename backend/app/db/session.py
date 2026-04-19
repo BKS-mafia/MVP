@@ -16,7 +16,7 @@ from app.models.base import Base
 async_engine: AsyncEngine = create_async_engine(
     str(settings.DATABASE_URL),
     echo=settings.SQL_ECHO,
-    pool_pre_ping=True,  # проверка соединения перед использованием
+    # pool_pre_ping=True,  # Отключено - вызывает MissingGreenlet ошибку в async контексте
     pool_recycle=3600,   # переподключение каждые час
 )
 

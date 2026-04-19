@@ -37,7 +37,11 @@ class GameCRUD:
         )
         db.add(game)
         await db.commit()
-        await db.refresh(game)
+        
+        # Вместо db.refresh() делаем явный SELECT для избежания MissingGreenlet
+        stmt = select(GameModel).where(GameModel.id == game.id)
+        result = await db.execute(stmt)
+        game = result.scalar_one()
         return game
 
     async def get(self, db: AsyncSession, id: int) -> Optional[GameModel]:
@@ -118,8 +122,12 @@ class GameCRUD:
             setattr(db_obj, field, value)
 
         await db.commit()
-        await db.refresh(db_obj)
-        return db_obj
+        
+        # Вместо db.refresh() делаем явный SELECT для избежания MissingGreenlet
+        stmt = select(GameModel).where(GameModel.id == db_obj.id)
+        result = await db.execute(stmt)
+        updated_obj = result.scalar_one()
+        return updated_obj
 
     async def delete(self, db: AsyncSession, *, id: int) -> Optional[GameModel]:
         """
@@ -155,5 +163,9 @@ class GameCRUD:
         game.humanness_scores = humanness_scores
 
         await db.commit()
-        await db.refresh(game)
+        
+        # Вместо db.refresh() делаем явный SELECT для избежания MissingGreenlet
+        stmt = select(GameModel).where(GameModel.id == game.id)
+        result = await db.execute(stmt)
+        game = result.scalar_one()
         return game
