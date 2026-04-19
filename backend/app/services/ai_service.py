@@ -21,6 +21,7 @@ from app.ai.mcp_tools import (
     VOTE_TOOLS,
     MCPToolDispatcher,
 )
+from app.ai.rate_limiter import ai_request_manager
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,13 @@ class AIService:
         self.client = openrouter_client
         self.characters: Dict[str, AICharacter] = self._load_default_characters()
         self.typing_speed_range = (30, 100)  # слов в минуту (для имитации задержки)
+        self._ws_manager = None  # Устанавливается через set_ws_manager
+    
+    def set_ws_manager(self, ws_manager) -> None:
+        """Установить WebSocket manager для отправки уведомлений."""
+        self._ws_manager = ws_manager
+        # Также устанавливаем в глобальный ai_request_manager
+        ai_request_manager.set_ws_manager(ws_manager)
 
     def _load_default_characters(self) -> Dict[str, AICharacter]:
         """
@@ -289,16 +297,49 @@ class AIService:
         })
         return behaviors.get(role, "Ты мирный житель.")
 
+    async def _notify_thinking(
+        self,
+        room_id: Optional[int],
+        player_ids: Optional[List[int]],
+        status: str = "thinking",
+    ) -> None:
+        """Отправить уведомление 'AI думает' клиентам."""
+        if not self._ws_manager:
+            return
+        
+        message = {
+            "type": "ai_thinking",
+            "status": status,  # "thinking" | "finished" | "error" | "retry"
+        }
+        
+        try:
+            if player_ids:
+                await self._ws_manager.broadcast_to_players(player_ids, message)
+            elif room_id:
+                await self._ws_manager.broadcast_to_room(room_id, message)
+        except Exception as e:
+            logger.warning(f"Failed to send AI thinking notification: {e}")
+
     async def generate_response(
         self,
         context: str,
         character_key: str = "calm_civilian",
         additional_instructions: Optional[str] = None,
         simulate_typing: bool = True,
+        room_id: Optional[int] = None,
+        player_ids: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
         """
         Сгенерировать ответ AI.
         Если simulate_typing=True, имитировать задержку набора текста.
+        
+        Args:
+            context: Контекст для генерации
+            character_key: Ключ персонажа
+            additional_instructions: Дополнительные инструкции
+            simulate_typing: Имитировать задержку набора текста
+            room_id: ID комнаты для уведомлений
+            player_ids: Список ID игроков для уведомлений
         """
         character = self.get_character(character_key)
         messages = self.create_prompt(context, character, additional_instructions)
@@ -318,6 +359,9 @@ class AIService:
             typing_delay = min(typing_delay, 10.0)
             await asyncio.sleep(typing_delay)
 
+        # Отправляем уведомление о начале обработки
+        await self._notify_thinking(room_id, player_ids, "thinking")
+
         # Генерация ответа через OpenRouter API
         # generate_response теперь возвращает message-объект (dict), а не полный ответ API
         ai_text = "(AI не дал ответа)"
@@ -333,6 +377,16 @@ class AIService:
         except Exception as e:
             logger.error(f"Ошибка генерации AI: {e}")
             ai_text = "Произошла ошибка. Пропускаю ход."
+            await self._notify_thinking(room_id, player_ids, "error")
+            return {
+                "text": ai_text,
+                "character": character.name,
+                "role": character.role,
+                "tokens_used": 0,
+            }
+        
+        # Отправляем уведомление о завершении
+        await self._notify_thinking(room_id, player_ids, "finished")
 
         return {
             "text": ai_text,
@@ -347,10 +401,20 @@ class AIService:
         schema: Dict[str, Any],
         character_key: str = "calm_civilian",
         additional_instructions: Optional[str] = None,
+        room_id: Optional[int] = None,
+        player_ids: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
         """
         Сгенерировать структурированный ответ (JSON) в соответствии со схемой.
         Используется для ночных действий, голосований и т.п.
+        
+        Args:
+            context: Контекст для генерации
+            schema: JSON схема для ответа
+            character_key: Ключ персонажа
+            additional_instructions: Дополнительные инструкции
+            room_id: ID комнаты для уведомлений
+            player_ids: Список ID игроков для уведомлений
         """
         character = self.get_character(character_key)
         messages = self.create_prompt(context, character, additional_instructions)
@@ -358,6 +422,9 @@ class AIService:
         # Добавляем инструкцию о формате ответа
         schema_instruction = f"Ответь строго в формате JSON согласно схеме: {schema}"
         messages[-1]["content"] += f"\n{schema_instruction}"
+
+        # Отправляем уведомление о начале обработки
+        await self._notify_thinking(room_id, player_ids, "thinking")
 
         try:
             response = await self.client.generate_structured_response(
@@ -367,9 +434,11 @@ class AIService:
                 max_tokens=character.max_tokens,
             )
             # Возвращаем JSON-ответ
+            await self._notify_thinking(room_id, player_ids, "finished")
             return response
         except Exception as e:
             logger.error(f"Ошибка структурированной генерации AI: {e}")
+            await self._notify_thinking(room_id, player_ids, "error")
             return {}
 
     async def simulate_typing_events(
@@ -493,6 +562,8 @@ class AIService:
         player: Any,
         game_context: dict,
         dispatcher: MCPToolDispatcher,
+        room_id: Optional[int] = None,
+        player_ids: Optional[List[int]] = None,
     ) -> dict:
         """
         Запросить у ИИ ночное действие через MCP tool calling.
@@ -501,6 +572,8 @@ class AIService:
                      с атрибутами ``id``, ``role``, ``name``.
         ``game_context`` — словарь с ключами ``alive_players``, ``dead_players``,
                            ``phase``, ``night_number``.
+        ``room_id`` — ID комнаты для уведомлений
+        ``player_ids`` — список ID игроков для уведомлений
         """
         # Добавляем информацию об индексе игрока в контекст
         player_id = player.get("id") if isinstance(player, dict) else getattr(player, "id", 0)
@@ -531,6 +604,9 @@ class AIService:
             {"role": "user", "content": context_msg},
         ]
 
+        # Отправляем уведомление о начале обработки
+        await self._notify_thinking(room_id, player_ids, "thinking")
+
         try:
             response_message = await self.client.generate_response(
                 messages=messages,
@@ -538,9 +614,11 @@ class AIService:
                 tool_choice={"type": "function", "function": {"name": "perform_night_action"}},
             )
             results = await dispatcher.parse_and_dispatch(response_message, player_id=player_id)
+            await self._notify_thinking(room_id, player_ids, "finished")
             return results[0] if results else {}
         except Exception as e:
             logger.error(f"request_night_action ошибка (player_id={player_id}): {e}")
+            await self._notify_thinking(room_id, player_ids, "error")
             return {"error": str(e)}
 
     async def request_day_message(
@@ -548,12 +626,16 @@ class AIService:
         player: Any,
         game_context: dict,
         dispatcher: MCPToolDispatcher,
+        room_id: Optional[int] = None,
+        player_ids: Optional[List[int]] = None,
     ) -> dict:
         """
         Запросить у ИИ сообщение для дневного чата.
 
         ``game_context`` — словарь с ключами ``alive_players``, ``phase``,
                            ``recent_messages``.
+        ``room_id`` — ID комнаты для уведомлений
+        ``player_ids`` — список ID игроков для уведомлений
         """
         # Добавляем информацию об индексе игрока в контекст
         player_id = player.get("id") if isinstance(player, dict) else getattr(player, "id", 0)
@@ -592,6 +674,9 @@ class AIService:
         logger.info(f"  dispatcher: {dispatcher}")
         logger.info(f"  dispatcher._send_message_cb: {getattr(dispatcher, '_send_message_cb', 'NOT FOUND')}")
 
+        # Отправляем уведомление о начале обработки
+        await self._notify_thinking(room_id, player_ids, "thinking")
+
         try:
             logger.info(f"request_day_message: player_id={player_id}, tools={DAY_TOOLS}")
             
@@ -616,6 +701,7 @@ class AIService:
                     if send_message_cb:
                         logger.info(f"Calling send_message_cb directly with content: '{content}'")
                         await send_message_cb(player_id=player_id, content=content)
+                        await self._notify_thinking(room_id, player_ids, "finished")
                         return {"ok": True, "content": content}
             
             results = await dispatcher.parse_and_dispatch(response_message, player_id=player_id)
@@ -628,8 +714,10 @@ class AIService:
                 if send_message_cb and content:
                     logger.info(f"Using content as fallback: '{content}'")
                     await send_message_cb(player_id=player_id, content=content)
+                    await self._notify_thinking(room_id, player_ids, "finished")
                     return {"ok": True, "content": content}
             
+            await self._notify_thinking(room_id, player_ids, "finished")
             return results[0] if results else {}
         except Exception as e:
             logger.error(f"request_day_message ошибка (player_id={player_id}): {e}")
@@ -643,6 +731,7 @@ class AIService:
                 "has_client": self.client is not None,
             }
             logger.error(f"Детали ошибки AI: {error_details}")
+            await self._notify_thinking(room_id, player_ids, "error")
             return error_details
 
     async def request_vote(
@@ -650,12 +739,16 @@ class AIService:
         player: Any,
         game_context: dict,
         dispatcher: MCPToolDispatcher,
+        room_id: Optional[int] = None,
+        player_ids: Optional[List[int]] = None,
     ) -> dict:
         """
         Запросить у ИИ голос за исключение игрока.
 
         ``game_context`` — словарь с ключами ``alive_players``,
                            ``day_chat_history``, ``phase``.
+        ``room_id`` — ID комнаты для уведомлений
+        ``player_ids`` — список ID игроков для уведомлений
         """
         # Добавляем информацию об индексе игрока в контекст
         player_id = player.get("id") if isinstance(player, dict) else getattr(player, "id", 0)
@@ -686,6 +779,9 @@ class AIService:
             {"role": "user", "content": context_msg},
         ]
 
+        # Отправляем уведомление о начале обработки
+        await self._notify_thinking(room_id, player_ids, "thinking")
+
         try:
             response_message = await self.client.generate_response(
                 messages=messages,
@@ -693,9 +789,11 @@ class AIService:
                 tool_choice={"type": "function", "function": {"name": "vote_for_player"}},
             )
             results = await dispatcher.parse_and_dispatch(response_message, player_id=player_id)
+            await self._notify_thinking(room_id, player_ids, "finished")
             return results[0] if results else {}
         except Exception as e:
             logger.error(f"request_vote ошибка (player_id={player_id}): {e}")
+            await self._notify_thinking(room_id, player_ids, "error")
             return {"error": str(e)}
 
 

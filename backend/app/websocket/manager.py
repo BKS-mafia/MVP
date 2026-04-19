@@ -47,10 +47,13 @@ class ConnectionManager:
 
     async def send_personal_message(self, message: dict, websocket: WebSocket):
         try:
+            # Check if websocket is still in active connections and not closed
+            if websocket not in self.websocket_room:
+                return
             await websocket.send_text(json.dumps(message))
         except Exception as e:
             logger.error(f"Error sending personal message: {e}")
-            self.disconnect(websocket)
+            await self.disconnect(websocket)
 
     async def broadcast_to_room(self, room_id: int, message: dict) -> None:
         if room_id in self.active_connections:
@@ -61,9 +64,9 @@ class ConnectionManager:
                 except Exception as e:
                     logger.error(f"Error broadcasting to websocket: {e}")
                     disconnected.add(websocket)
-            # Remove disconnected websockets
+            # Remove disconnected websockets (with await to prevent RuntimeWarning)
             for websocket in disconnected:
-                self.disconnect(websocket)
+                await self.disconnect(websocket)
 
     async def send_to_player(self, player_id: int, message: dict) -> None:
         """Send a message to a specific connected player by player_id."""
@@ -73,7 +76,7 @@ class ConnectionManager:
                     await websocket.send_text(json.dumps(message))
                 except Exception as e:
                     logger.error(f"Error sending message to player {player_id}: {e}")
-                    self.disconnect(websocket)
+                    await self.disconnect(websocket)
                 return  # player_id is unique, stop after first match
 
     async def disconnect_player(self, player_id: int) -> bool:
@@ -84,7 +87,7 @@ class ConnectionManager:
                     await websocket.close()
                 except Exception:
                     pass
-                self.disconnect(websocket)
+                await self.disconnect(websocket)
                 return True
         return False
 
@@ -100,7 +103,7 @@ class ConnectionManager:
                     logger.error(f"Error broadcasting to player {pid}: {e}")
                     disconnected.add(websocket)
         for websocket in disconnected:
-            self.disconnect(websocket)
+            await self.disconnect(websocket)
 
     async def connect_ghost(
         self, websocket: WebSocket, room_id: int, player_id: int

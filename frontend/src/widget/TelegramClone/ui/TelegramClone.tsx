@@ -172,6 +172,51 @@ export const TelegramClone: React.FC = () => {
             ));
         };
 
+        const handleChatHistory = (data: unknown) => {
+            const payload = data as { type: string; messages: Array<{
+                type: string;
+                player_id: number;
+                nickname: string;
+                content: string;
+                is_mafia_channel: boolean;
+                clientMessageId: string;
+            }>};
+            console.log('Received chat_history:', payload);
+            
+            if (!payload.messages || !Array.isArray(payload.messages)) {
+                return;
+            }
+            
+            // Обрабатываем каждое сообщение из истории
+            payload.messages.forEach(msg => {
+                // Проверяем дедупликацию
+                if (msg.clientMessageId && processedMessageIdsRef.current.has(msg.clientMessageId)) {
+                    return;
+                }
+                if (msg.clientMessageId) {
+                    processedMessageIdsRef.current.add(msg.clientMessageId);
+                }
+                
+                const chatId = msg.is_mafia_channel ? 'mafia' : 'general';
+                
+                const newMessage: ChatMessageType = {
+                    id: msg.clientMessageId || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    userId: String(msg.player_id),
+                    userName: msg.nickname,
+                    text: msg.content,
+                    timestamp: Date.now(),
+                    isOwn: msg.player_id === currentUserIdRef.current,
+                };
+
+                setChatMessages(prev => ({
+                    ...prev,
+                    [chatId]: [...(prev[chatId] || []), newMessage],
+                }));
+            });
+            
+            console.log(`Loaded ${payload.messages.length} messages from chat history`);
+        };
+
         const handleConnect = (data: unknown) => {
             console.log('WebSocket connected:', data);
         };
@@ -188,6 +233,7 @@ export const TelegramClone: React.FC = () => {
         websocketClient.on('chat_event', handleChatEvent);
         websocketClient.on('chat_event_extended', handleChatEventExtended);
         websocketClient.on('ghost_chat_message', handleGhostChatMessage);
+        websocketClient.on('chat_history', handleChatHistory);
         websocketClient.on('connect', handleConnect);
         websocketClient.on('disconnect', handleDisconnect);
         websocketClient.on('error', handleError);
@@ -197,6 +243,7 @@ export const TelegramClone: React.FC = () => {
             websocketClient.off('chat_event', handleChatEvent);
             websocketClient.off('chat_event_extended', handleChatEventExtended);
             websocketClient.off('ghost_chat_message', handleGhostChatMessage);
+            websocketClient.off('chat_history', handleChatHistory);
             websocketClient.off('connect', handleConnect);
             websocketClient.off('disconnect', handleDisconnect);
             websocketClient.off('error', handleError);

@@ -93,7 +93,7 @@ async def _handle_disconnect(
     room_id = player.room_id
 
     # Disconnect from manager first (removes this WS, remaining can still receive)
-    manager.disconnect(websocket)
+    await manager.disconnect(websocket)
 
     # Broadcast disconnect notification to room
     await manager.broadcast_to_room(
@@ -571,6 +571,23 @@ async def handle_ghost_chat_message(
 
     # Рассылаем только призракам и зрителям
     await manager.broadcast_to_ghosts(player.room_id, ghost_message)
+    
+    # Сохраняем ghost chat сообщение в БД
+    game = await crud.game.get_by_room(db, room_id=player.room_id)
+    if game:
+        db.add(
+            GameEvent(
+                game_id=game.id,
+                player_id=player.id,
+                event_type="chat_ghost",
+                event_data=json.dumps({
+                    "content": content,
+                    "nickname": player.nickname,
+                }),
+            )
+        )
+        await db.commit()
+    
     logger.info(
         f"Ghost message from player {player.id} ({player.nickname!r}) "
         f"in room {player.room_id}: {content!r}"
@@ -896,6 +913,61 @@ async def handle_reconnect(
     }
 
     await manager.send_personal_message(state_payload, websocket)
+
+    # Send chat history if game exists
+    if game:
+        # Load chat messages from game_events
+        chat_events = await crud.game_event.get_by_game_and_type(
+            db, game_id=game.id, event_type="chat"
+        )
+        mafia_events = await crud.game_event.get_by_game_and_type(
+            db, game_id=game.id, event_type="chat_mafia"
+        )
+        
+        # Build chat history payload
+        chat_history: List[Dict[str, Any]] = []
+        for event in chat_events:
+            try:
+                event_data = json.loads(event.event_data) if event.event_data else {}
+                chat_history.append({
+                    "type": "chat_event",
+                    "player_id": event.player_id,
+                    "nickname": event_data.get("nickname", ""),
+                    "content": event_data.get("content", ""),
+                    "is_mafia_channel": False,
+                    "clientMessageId": f"history-{event.id}",
+                })
+            except json.JSONDecodeError:
+                continue
+        
+        # Send mafia chat history only to mafia players
+        if player.role == PlayerRole.MAFIA:
+            for event in mafia_events:
+                try:
+                    event_data = json.loads(event.event_data) if event.event_data else {}
+                    chat_history.append({
+                        "type": "chat_event",
+                        "player_id": event.player_id,
+                        "nickname": event_data.get("nickname", ""),
+                        "content": event_data.get("content", ""),
+                        "is_mafia_channel": True,
+                        "clientMessageId": f"history-{event.id}",
+                    })
+                except json.JSONDecodeError:
+                    continue
+        
+        # Sort by clientMessageId to maintain order
+        chat_history.sort(key=lambda x: x["clientMessageId"])
+        
+        if chat_history:
+            await manager.send_personal_message(
+                {
+                    "type": "chat_history",
+                    "messages": chat_history,
+                },
+                websocket,
+            )
+            logger.info(f"Sent {len(chat_history)} chat messages to reconnecting player {player.id}")
 
     # Notify room that this player reconnected
     await manager.broadcast_to_room(

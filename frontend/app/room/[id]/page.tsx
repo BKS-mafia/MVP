@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Spin, message } from 'antd';
 import { TelegramClone } from '@/src/widget/TelegramClone';
 import { GameHeaderWidget } from '@/src/widget/GameHeaderWidget';
+import { RoleRevealModal, useRoleRevealModal } from '@/src/widget/RoleRevealModal';
 import { websocketClient } from '@/src/shared/api/websocket';
 import { useGameStore, ChatMessage, Player, Voting } from '@/src/shared/store/gameStore';
 import { getRoom, getPlayers } from '@/src/shared/api/endpoints/rooms';
@@ -37,6 +38,9 @@ export default function RoomPage() {
         setGameStatus,
         setPhaseTimer,
     } = useGameStore();
+
+    // Модальное окно с ролью
+    const { modalVisible, handleClose } = useRoleRevealModal();
 
     // Инициализация при загрузке страницы
     useEffect(() => {
@@ -399,6 +403,8 @@ export default function RoomPage() {
                 onSendMessage={handleSendMessage}
                 onVote={handleVote}
             />
+            {/* Модальное окно с ролью игрока */}
+            <RoleRevealModal visible={modalVisible} onClose={handleClose} />
         </div>
     );
 }

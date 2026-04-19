@@ -1,9 +1,3 @@
-"""
-Сервис для управления игровой логикой: запуск State Machine, обработка ходов, ночные действия, голосование.
-Координация между игроками, AI-агентами и WebSocket событиями.
-Использование State Machine из app.game.state_machine.
-Обработка таймеров и автоматических переходов.
-"""
 import asyncio
 import json
 import logging
@@ -26,11 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 class GameService:
-    """
-    Сервис для управления игровой логикой.
-    Управляет State Machine для каждой активной комнаты.
-    """
-
     def __init__(
         self,
         room_crud: RoomCRUD,
@@ -42,39 +31,42 @@ class GameService:
         self.player_crud = player_crud
         self.game_crud = game_crud
         self.ws_manager = ws_manager
-        self.active_machines: Dict[int, StateMachine] = {}  # room_id -> StateMachine
-        self.tasks: Dict[int, asyncio.Task] = {}  # room_id -> задача таймера
-        self.ready_players: Dict[int, set] = {}  # room_id -> set of ready player_ids
-        self._phase_timers: Dict[int, asyncio.Task] = {}  # room_id -> asyncio.Task (таймер фазы)
-        self._timer_broadcast_tasks: Dict[int, asyncio.Task] = {}  # room_id -> задача рассылки таймера
+        self.active_machines: Dict[int, StateMachine] = {}
+        self.tasks: Dict[int, asyncio.Task] = {}
+        self.ready_players: Dict[int, set] = {}
+        self._phase_timers: Dict[int, asyncio.Task] = {}
+        self._timer_broadcast_tasks: Dict[int, asyncio.Task] = {}
         
         # Загружаем список имён для AI игроков
         self._ai_names: List[str] = self._load_ai_names()
+        
+        # Устанавливаем ws_manager в AI сервис
+        self._setup_ai_service()
+    
+    def _setup_ai_service(self):
+        from app.services.ai_service import ai_service
+        ai_service.set_ws_manager(self.ws_manager)
     
     def _load_ai_names(self) -> List[str]:
-        """Загрузить список человеческих имён для AI игроков из JSON файла."""
         try:
-            with open("app/ai/names.json", "r", encoding="utf-8") as f:
+            with open(os.path.join(os.path.dirname(__file__), os.pardir, 'app', 'ai', 'names.json'), 'r', encoding='utf-8') as f:
                 names = json.load(f)
-                logger.info(f"Загружено {len(names)} имён для AI игроков")
+                logger.info(f'Загружено {len(names)} имён для AI игроков')
                 return names
         except FileNotFoundError:
-            logger.warning("Файл app/ai/names.json не найден, используем резервные имена")
+            logger.warning('Файл names.json не найден, используем резервные имена')
             return []
-        except json.JSONDecodeError as e:
-            logger.error(f"Ошибка чтения app/ai/names.json: {e}")
+        except Exception as e:
+            logger.error(f'Ошибка чтения names.json: {e}')
             return []
     
-    def _get_random_ai_name(self, occupied_nicknames: set[str]) -> str:
-        """Получить случайное имя для AI игрока, которое ещё не занято."""
-        # Если список имён пустой или все имена заняты, используем резервный вариант
+    def _get_random_ai_name(self, occupied_nicknames: set) -> str:
         available_names = [n for n in self._ai_names if n not in occupied_nicknames]
         
         if available_names:
             return random.choice(available_names)
         
-        # Резервный вариант если все имена заняты
-        return f"Player_{random.randint(10000, 99999)}"
+        return f'Player_{random.randint(10000, 99999)}'
 
     async def _fill_with_ai_players(
         self,
@@ -82,39 +74,18 @@ class GameService:
         room: RoomModel,
         existing_players: List[PlayerModel],
     ) -> List[PlayerModel]:
-        """
-        Дозаполнить комнату AI-игроками до room.total_players.
-
-        Создаёт записи Player с is_ai=True и случайными уникальными никнеймами
-        для каждого недостающего игрока. Обновляет счётчики комнаты.
-
-        Args:
-            db: Сессия БД.
-            room: Объект комнаты.
-            existing_players: Текущий список игроков в комнате.
-
-        Returns:
-            Список созданных AI-игроков (может быть пустым, если дозаполнение не нужно).
-
-        Raises:
-            Exception: Если создание какого-либо AI-игрока завершилось ошибкой.
-        """
         needed: int = room.total_players - len(existing_players)
         if needed <= 0:
             logger.debug(
-                f"Комната {room.id}: дозаполнение AI-игроками не требуется "
-                f"({len(existing_players)}/{room.total_players})"
+                f'Комната {room.id}: дозаполнение AI-игроками не требуется '
+                f'({len(existing_players)}/{room.total_players})'
             )
             return []
 
-        # Занятые никнеймы — для гарантии уникальности в рамках сессии
-        occupied_nicknames: set[str] = {p.nickname for p in existing_players}
-
+        occupied_nicknames: set = {p.nickname for p in existing_players}
         created_ai_players: List[PlayerModel] = []
 
         for _ in range(needed):
-            # Генерируем никнейм, уникальный среди уже занятых в этой сессии
-            # Используем человеческие имена из names.json
             nickname: str = self._get_random_ai_name(occupied_nicknames)
             occupied_nicknames.add(nickname)
 
@@ -134,17 +105,14 @@ class GameService:
                 )
                 created_ai_players.append(ai_player)
                 logger.info(
-                    f"Создан AI-игрок '{nickname}' (id={ai_player.id}) "
-                    f"для комнаты {room.id}"
+                    f'Создан AI-игрок {nickname} (id={ai_player.id}) для комнаты {room.id}'
                 )
             except Exception as exc:
                 logger.error(
-                    f"Ошибка создания AI-игрока '{nickname}' "
-                    f"для комнаты {room.id}: {exc}"
+                    f'Ошибка создания AI-игрока {nickname} для комнаты {room.id}: {exc}'
                 )
                 raise
 
-        # Атомарно обновляем счётчики комнаты после создания всех AI-игроков
         if created_ai_players:
             new_total: int = len(existing_players) + len(created_ai_players)
             new_ai_count: int = room.ai_players + len(created_ai_players)
@@ -157,8 +125,8 @@ class GameService:
                 ),
             )
             logger.info(
-                f"Комната {room.id}: добавлено {len(created_ai_players)} AI-игроков. "
-                f"Итого игроков: {new_total}/{room.total_players}"
+                f'Комната {room.id}: добавлено {len(created_ai_players)} AI-игроков. '
+                f'Итого игроков: {new_total}/{room.total_players}'
             )
 
         return created_ai_players
@@ -168,96 +136,75 @@ class GameService:
         db: AsyncSession,
         room_id: int,
     ) -> Dict[str, Any]:
-        """
-        Начать игру в комнате: создать State Machine и запустить её.
-
-        Если в комнате игроков меньше total_players,
-        недостающие слоты дозаполняются AI-игроками перед стартом.
-        """
-        # Проверка, что комната существует и готова
         room = await self.room_crud.get(db, id=room_id)
         if not room:
-            raise ValueError(f"Комната {room_id} не найдена")
+            raise ValueError(f'Комната {room_id} не найдена')
         if room.status not in (RoomStatus.LOBBY, RoomStatus.STARTING):
-            raise ValueError(f"Комната не в статусе lobby/starting (статус: {room.status})")
+            raise ValueError(f'Комната не в статусе lobby/starting (статус: {room.status})')
 
-        # Проверка количества игроков
         players: List[PlayerModel] = await self.player_crud.get_by_room(
             db, room_id=room_id
         )
         if len(players) < room.total_players:
-            # Дозаполняем комнату AI-игроками, если людей меньше максимума
             ai_players_added: List[PlayerModel] = await self._fill_with_ai_players(
                 db, room, players
             )
             if ai_players_added:
-                # Обновляем локальный список игроков для дальнейшей работы
                 players = await self.player_crud.get_by_room(db, room_id=room_id)
-                # Перечитываем room, т.к. его счётчики были обновлены
                 updated_room = await self.room_crud.get(db, id=room_id)
                 if updated_room:
                     room = updated_room
 
-        # Обновление статуса комнаты на "playing"
         await self.room_crud.update(
             db,
             db_obj=room,
-            obj_in=schemas.RoomUpdate(status="playing"),
+            obj_in=schemas.RoomUpdate(status='playing'),
         )
 
-        # Создание записи игры в БД (если ещё не создана)
         game = await self.game_crud.create(
             db,
             obj_in=schemas.GameCreate(
                 room_id=room_id,
-                status="lobby",
+                status='lobby',
                 day_number=1,
             ),
         )
 
-        # Создание State Machine с передачей ws_manager для рассылки событий
         from app.services.ai_service import ai_service
         from app.ai.mcp_tools import MCPToolDispatcher
         from app.db.session import AsyncSessionLocal
         
-        # Создаём НОВУЮ сессию для StateMachine, чтобы она не зависела от
-        # сессии HTTP запроса, которая будет закрыта после завершения запроса
         async with AsyncSessionLocal() as machine_db:
             mcp_dispatcher = MCPToolDispatcher()
             machine = StateMachine(
                 room_id=room_id,
                 db=machine_db,
                 ws_manager=self.ws_manager,
-                game_id=game.id,  # Передаём game_id для автоматического перехода из LOBBY
+                game_id=game.id,
                 ai_service=ai_service,
                 mcp_dispatcher=mcp_dispatcher
             )
             self.active_machines[room_id] = machine
-            # Связываем machine с сервисом для запуска таймеров при смене фаз
             machine.game_service = self
 
-            # Запуск State Machine в фоне с собственной сессией
             asyncio.create_task(machine.start())
-        logger.info(f"State Machine запущена для комнаты {room_id}")
+        logger.info(f'State Machine запущена для комнаты {room_id}')
 
-        # Уведомление всех игроков через WebSocket
         await self.ws_manager.broadcast_to_room(
             room_id,
             {
-                "type": "game_started",
-                "room_id": room_id,
-                "game_id": game.id,
-                "message": "Игра началась! Распределение ролей...",
+                'type': 'game_started',
+                'room_id': room_id,
+                'game_id': game.id,
+                'message': 'Игра началась! Распределение ролей...',
             },
         )
-        # Таймеры фаз запускаются автоматически самой State Machine
-        # через machine.game_service.start_phase_timer() при каждом переходе фаз.
 
         return {
-            "room_id": room_id,
-            "game_id": game.id,
-            "machine": machine,
-            "message": "Игра успешно начата",
+            'room_id': room_id,
+            'game_id': game.id,
+            'machine': machine,
+            'message': 'Игра успешно начата',
         }
 
     async def stop_game_for_room(
@@ -265,55 +212,46 @@ class GameService:
         db: AsyncSession,
         room_id: int,
     ) -> Dict[str, Any]:
-        """
-        Остановить игру в комнате (досрочное завершение).
-        """
         machine = self.active_machines.get(room_id)
         if not machine:
-            raise ValueError(f"Активная игра в комнате {room_id} не найдена")
+            raise ValueError(f'Активная игра в комнате {room_id} не найдена')
 
-        # Остановка State Machine
         await machine.stop()
         del self.active_machines[room_id]
 
-        # Отмена таймерной задачи
         task = self.tasks.get(room_id)
         if task:
             task.cancel()
             del self.tasks[room_id]
-        # Отмена таймера фазы
         self.cancel_phase_timer(room_id)
 
-        # Обновление статуса комнаты на "finished"
         room = await self.room_crud.get(db, id=room_id)
         if room:
             await self.room_crud.update(
                 db,
                 db_obj=room,
-                obj_in=schemas.RoomUpdate(status="finished"),
+                obj_in=schemas.RoomUpdate(status='finished'),
             )
 
-        # Обновление игры в БД
         game = await self.game_crud.get_by_room(db, room_id=room_id)
         if game:
             await self.game_crud.update(
                 db,
                 db_obj=game,
-                obj_in=schemas.GameUpdate(status="finished", winner="aborted"),
+                obj_in=schemas.GameUpdate(status='finished', winner='aborted'),
             )
 
-        # Уведомление игроков
         await self.ws_manager.broadcast_to_room(
             room_id,
             {
-                "type": "game_stopped",
-                "room_id": room_id,
-                "message": "Игра досрочно завершена.",
+                'type': 'game_stopped',
+                'room_id': room_id,
+                'message': 'Игра досрочно завершена.',
             },
         )
 
-        logger.info(f"Игра в комнате {room_id} остановлена")
-        return {"room_id": room_id, "message": "Игра остановлена"}
+        logger.info(f'Игра в комнате {room_id} остановлена')
+        return {'room_id': room_id, 'message': 'Игра остановлена'}
 
     async def submit_night_action(
         self,
@@ -322,40 +260,29 @@ class GameService:
         player_id: int,
         action: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """
-        Принять ночное действие от игрока (мафия, доктор, комиссар).
-        Действие будет сохранено в State Machine.
-        """
         machine = self.active_machines.get(room_id)
         if not machine:
-            raise ValueError(f"Активная игра в комнате {room_id} не найдена")
+            raise ValueError(f'Активная игра в комнате {room_id} не найдена')
 
-        # Проверка, что сейчас ночная фаза
         if machine.current_phase != GamePhase.NIGHT:
-            raise ValueError("Ночные действия принимаются только в ночной фазе")
+            raise ValueError('Ночные действия принимаются только в ночной фазе')
 
-        # Проверка, что игрок жив и имеет право на действие (в зависимости от роли)
-        # Эта проверка может быть внутри State Machine, но можно сделать здесь.
-        # Пока просто передаём действие в машину.
         machine.night_actions[player_id] = action
-        logger.info(f"Ночное действие от игрока {player_id} в комнате {room_id}: {action}")
+        logger.info(f'Ночное действие от игрока {player_id} в комнате {room_id}: {action}')
 
-        # Уведомление через WebSocket, что действие принято
         await self.ws_manager.send_to_player(
             player_id,
             {
-                "type": "night_action_accepted",
-                "player_id": player_id,
-                "action": action,
+                'type': 'night_action_accepted',
+                'player_id': player_id,
+                'action': action,
             },
         )
 
-        # Если все необходимые действия получены, можно автоматически перейти к разрешению
-        # (это зависит от логики State Machine)
         return {
-            "player_id": player_id,
-            "action": action,
-            "message": "Ночное действие принято",
+            'player_id': player_id,
+            'action': action,
+            'message': 'Ночное действие принято',
         }
 
     async def submit_vote(
@@ -365,46 +292,37 @@ class GameService:
         voter_id: int,
         target_player_id: int,
     ) -> Dict[str, Any]:
-        """
-        Принять голос игрока во время дневного голосования.
-        """
         machine = self.active_machines.get(room_id)
         if not machine:
-            raise ValueError(f"Активная игра в комнате {room_id} не найдена")
+            raise ValueError(f'Активная игра в комнате {room_id} не найдена')
 
         if machine.current_phase != GamePhase.VOTING:
-            raise ValueError("Голосование возможно только в фазе голосования")
+            raise ValueError('Голосование возможно только в фазе голосования')
 
-        # Проверка, что голосующий жив
         voter = await self.player_crud.get(db, id=voter_id)
         if not voter or not voter.is_alive:
-            raise ValueError("Голосующий мёртв или не существует")
+            raise ValueError('Голосующий мёртв или не существует')
 
-        # Проверка, что цель существует и жива
         target = await self.player_crud.get(db, id=target_player_id)
         if not target or not target.is_alive:
-            raise ValueError("Цель голосования мёртва или не существует")
+            raise ValueError('Цель голосования мертва или не существует')
 
-        # Сохраняем голос
         machine.votes[voter_id] = target_player_id
-        logger.info(f"Голос от игрока {voter_id} за {target_player_id} в комнате {room_id}")
+        logger.info(f'Голос от игрока {voter_id} за {target_player_id} в комнате {room_id}')
 
-        # Уведомление всех о новом голосе (опционально)
         await self.ws_manager.broadcast_to_room(
             room_id,
             {
-                "type": "vote_received",
-                "voter_id": voter_id,
-                "target_player_id": target_player_id,
+                'type': 'vote_received',
+                'voter_id': voter_id,
+                'target_player_id': target_player_id,
             },
         )
 
-        # Если все живые игроки проголосовали, можно автоматически завершить голосование
-        # Это можно реализовать через проверку количества голосов.
         return {
-            "voter_id": voter_id,
-            "target_player_id": target_player_id,
-            "message": "Голос принят",
+            'voter_id': voter_id,
+            'target_player_id': target_player_id,
+            'message': 'Голос принят',
         }
 
     async def get_game_state(
@@ -412,35 +330,30 @@ class GameService:
         db: AsyncSession,
         room_id: int,
     ) -> Dict[str, Any]:
-        """
-        Получить текущее состояние игры для комнаты.
-        """
         machine = self.active_machines.get(room_id)
         if not machine:
-            raise ValueError(f"Активная игра в комнате {room_id} не найдена")
+            raise ValueError(f'Активная игра в комнате {room_id} не найдена')
 
-        # Получить игроков
         players = await self.player_crud.get_by_room(db, room_id=room_id)
-        # Получить игру из БД
         game = await self.game_crud.get_by_room(db, room_id=room_id)
 
         return {
-            "room_id": room_id,
-            "phase": machine.current_phase.value if machine.current_phase else None,
-            "day_number": machine.day_number,
-            "night_actions": machine.night_actions,
-            "votes": machine.votes,
-            "players": [
+            'room_id': room_id,
+            'phase': machine.current_phase.value if machine.current_phase else None,
+            'day_number': machine.day_number,
+            'night_actions': machine.night_actions,
+            'votes': machine.votes,
+            'players': [
                 {
-                    "id": p.id,
-                    "nickname": p.nickname,
-                    "role": p.role,
-                    "is_alive": p.is_alive,
-                    "is_ai": p.is_ai,
+                    'id': p.id,
+                    'nickname': p.nickname,
+                    'role': p.role,
+                    'is_alive': p.is_alive,
+                    'is_ai': p.is_ai,
                 }
                 for p in players
             ],
-            "game": game,
+            'game': game,
         }
 
     async def force_phase_transition(
@@ -449,161 +362,122 @@ class GameService:
         room_id: int,
         target_phase: GamePhase,
     ) -> Dict[str, Any]:
-        """
-        Принудительный переход фазы (для административных целей).
-        """
         machine = self.active_machines.get(room_id)
         if not machine:
-            raise ValueError(f"Активная игра в комнате {room_id} не найдена")
+            raise ValueError(f'Активная игра в комнате {room_id} не найдена')
 
         old_phase = machine.current_phase
         machine.current_phase = target_phase
-        logger.info(f"Принудительный переход фазы в комнате {room_id}: {old_phase} -> {target_phase}")
+        logger.info(f'Принудительный переход фазы в комнате {room_id}: {old_phase} -> {target_phase}')
 
-        # Уведомление игроков
         await self.ws_manager.broadcast_to_room(
             room_id,
             {
-                "type": "phase_changed",
-                "old_phase": old_phase.value if old_phase else None,
-                "new_phase": target_phase.value,
-                "room_id": room_id,
+                'type': 'phase_changed',
+                'old_phase': old_phase.value if old_phase else None,
+                'new_phase': target_phase.value,
+                'room_id': room_id,
             },
         )
 
         return {
-            "room_id": room_id,
-            "old_phase": old_phase.value if old_phase else None,
-            "new_phase": target_phase.value,
+            'room_id': room_id,
+            'old_phase': old_phase.value if old_phase else None,
+            'new_phase': target_phase.value,
         }
 
     async def _phase_timer(self, room_id: int, phase: str, duration_seconds: int):
-        """
-        Отсчёт времени фазы. По истечении принудительно завершает фазу.
-
-        Args:
-            room_id: ID комнаты (он же ключ state machine)
-            phase: имя фазы ("night", "day", "voting")
-            duration_seconds: длительность фазы в секундах
-        """
         try:
             await asyncio.sleep(duration_seconds)
 
-            # Проверяем, что machine всё ещё существует и в той же фазе
             state_machine = self.active_machines.get(room_id)
             if state_machine is None:
                 return
 
             current_phase_value = (
                 state_machine.current_phase.value
-                if hasattr(state_machine.current_phase, "value")
+                if hasattr(state_machine.current_phase, 'value')
                 else str(state_machine.current_phase)
             )
             if current_phase_value != phase:
-                return  # фаза уже сменилась — кто-то завершил раньше
+                return
 
-            # Принудительно завершаем текущую фазу
             logger.info(
-                f"Phase timer expired for room {room_id}, phase={phase}. "
-                "Forcing advance."
+                f'Phase timer expired for room {room_id}, phase={phase}. '
+                'Forcing advance.'
             )
             await state_machine.force_advance_phase()
 
         except asyncio.CancelledError:
-            pass  # Таймер был отменён — это нормально
+            pass
         except Exception as e:
-            logger.error(f"Phase timer error for room {room_id}: {e}")
+            logger.error(f'Phase timer error for room {room_id}: {e}')
 
     async def _broadcast_timer_updates(self, room_id: int) -> None:
-        """
-        Периодическая рассылка обновлений таймера фазы всем игрокам.
-        Каждую секунду отправляет оставшееся время.
-        """
         try:
             while True:
-                await asyncio.sleep(1)  # Обновляем каждую секунду
+                await asyncio.sleep(1)
                 
                 machine = self.active_machines.get(room_id)
                 if machine is None:
-                    break  # Игра завершена
+                    break
                 
-                # Проверяем, что таймер всё ещё активен
                 if room_id not in self._phase_timers:
                     break
                 
-                # Отправляем обновление таймера
                 await machine._broadcast_phase_timer()
                 
         except asyncio.CancelledError:
-            pass  # Таймер был отменён — это нормально
+            pass
         except Exception as e:
-            logger.error(f"Broadcast timer update error for room {room_id}: {e}")
+            logger.error(f'Broadcast timer update error for room {room_id}: {e}')
 
     def start_phase_timer(
         self, room_id: int, phase: str, duration_seconds: int = None
     ) -> asyncio.Task:
-        """
-        Запустить таймер для фазы. Отменяет предыдущий таймер если был.
-
-        Длительности по умолчанию:
-        - night: 60 секунд
-        - day: 120 секунд
-        - voting: 60 секунд
-        - turing_test: 90 секунд
-        """
         DEFAULT_DURATIONS = {
-            "night": 60,
-            "day": 120,
-            "voting": 60,
-            "turing_test": 90,
+            'night': 60,
+            'day': 120,
+            'voting': 60,
+            'turing_test': 90,
         }
 
         if duration_seconds is None:
             duration_seconds = DEFAULT_DURATIONS.get(phase, 60)
 
-        # Отменяем предыдущий таймер если есть
         self.cancel_phase_timer(room_id)
 
-        # Синхронизируем таймер в StateMachine
         machine = self.active_machines.get(room_id)
         if machine:
             machine.reset_phase_timer(duration_seconds)
-            # Отменяем предыдущую задачу рассылки если есть
             old_broadcast = self._timer_broadcast_tasks.get(room_id)
             if old_broadcast and not old_broadcast.done():
                 old_broadcast.cancel()
-            # Запускаем периодическую рассылку обновлений таймера
             broadcast_task = asyncio.create_task(self._broadcast_timer_updates(room_id))
             self._timer_broadcast_tasks[room_id] = broadcast_task
 
-        # Запускаем новый таймер
         task = asyncio.create_task(
             self._phase_timer(room_id, phase, duration_seconds)
         )
         self._phase_timers[room_id] = task
         logger.debug(
-            f"Phase timer started for room {room_id}, phase={phase}, "
-            f"duration={duration_seconds}s"
+            f'Phase timer started for room {room_id}, phase={phase}, '
+            f'duration={duration_seconds}s'
         )
         return task
 
     def cancel_phase_timer(self, room_id: int) -> None:
-        """Отменить активный таймер фазы для комнаты."""
         existing = self._phase_timers.get(room_id)
         if existing and not existing.done():
             existing.cancel()
         self._phase_timers.pop(room_id, None)
         
-        # Также отменяем задачу рассылки таймера
         broadcast_task = self._timer_broadcast_tasks.get(room_id)
         if broadcast_task and not broadcast_task.done():
             broadcast_task.cancel()
         self._timer_broadcast_tasks.pop(room_id, None)
 
     async def cleanup_room(self, room_id: int):
-        """
-        Очистить ресурсы, связанные с комнатой (при завершении игры).
-        """
         machine = self.active_machines.pop(room_id, None)
         if machine:
             await machine.stop()
@@ -611,10 +485,11 @@ class GameService:
         if task:
             task.cancel()
         self.cancel_phase_timer(room_id)
-        logger.info(f"Ресурсы игры для комнаты {room_id} очищены")
+        logger.info(f'Ресурсы игры для комнаты {room_id} очищены')
 
 
-# Глобальный экземпляр сервиса для удобства
+# Глобальный экземпляр сервиса
+import os
 from app.websocket.manager import manager as ws_manager
 from app.crud.game import GameCRUD as GameCRUDClass
 
@@ -623,7 +498,6 @@ player_crud = PlayerCRUD()
 try:
     game_crud = GameCRUDClass()
 except Exception:
-    # Если GameCRUD не существует, создадим заглушку (для совместимости)
     class GameCRUD:
         async def create(self, db, obj_in):
             return None

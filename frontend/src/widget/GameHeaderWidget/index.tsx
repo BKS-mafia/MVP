@@ -37,12 +37,28 @@ const ROLE_NAMES: Record<string, string> = {
     'Civilian': 'Мирный житель',
 };
 
+// Иконки для ролей
+const ROLE_ICONS: Record<string, React.ReactNode> = {
+    'Mafia': <span style={{ fontSize: '20px' }}>🔪</span>,
+    'Doctor': <span style={{ fontSize: '20px' }}>💉</span>,
+    'Commissioner': <span style={{ fontSize: '20px' }}>🔍</span>,
+    'Civilian': <span style={{ fontSize: '20px' }}>🧑‍🤝‍🧑</span>,
+};
+
 // Цвета для ролей
 const ROLE_COLORS: Record<string, string> = {
-    'Mafia': 'red',
-    'Doctor': 'green',
-    'Commissioner': 'blue',
-    'Civilian': 'default',
+    'Mafia': '#ff4d4f',
+    'Doctor': '#52c41a',
+    'Commissioner': '#1890ff',
+    'Civilian': '#8c8c8c',
+};
+
+// Фоновые цвета для ролей
+const ROLE_BG_COLORS: Record<string, string> = {
+    'Mafia': '#fff1f0',
+    'Doctor': '#f6ffed',
+    'Commissioner': '#e6f7ff',
+    'Civilian': '#f5f5f5',
 };
 
 interface GameHeaderWidgetProps {
@@ -144,21 +160,34 @@ export const GameHeaderWidget: React.FC<GameHeaderWidgetProps> = ({ className })
                 </div>
             </div>
 
-            {/* Роль игрока */}
+            {/* Роль игрока - УЛУЧШЕННОЕ ОТОБРАЖЕНИЕ */}
             {currentPlayer?.role && (
                 <div style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
-                    padding: '8px 12px',
-                    background: '#fff',
-                    borderRadius: '8px',
+                    justifyContent: 'center',
+                    gap: '12px',
+                    padding: '12px 20px',
+                    background: ROLE_BG_COLORS[currentPlayer.role] || '#f5f5f5',
+                    borderRadius: '12px',
+                    border: `2px solid ${ROLE_COLORS[currentPlayer.role] || '#8c8c8c'}`,
+                    boxShadow: `0 2px 8px ${ROLE_COLORS[currentPlayer.role] || '#8c8c8c'}20`,
                 }}>
-                    <UserOutlined style={{ fontSize: '18px' }} />
-                    <Text>Ваша роль:</Text>
-                    <Tag color={ROLE_COLORS[currentPlayer.role] || 'default'} style={{ margin: 0 }}>
-                        {ROLE_NAMES[currentPlayer.role] || currentPlayer.role}
-                    </Tag>
+                    <div style={{ fontSize: '24px' }}>
+                        {ROLE_ICONS[currentPlayer.role]}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                        <Text type="secondary" style={{ fontSize: '12px', lineHeight: 1.2 }}>
+                            Ваша роль:
+                        </Text>
+                        <Text strong style={{ 
+                            fontSize: '18px', 
+                            color: ROLE_COLORS[currentPlayer.role] || '#8c8c8c',
+                            lineHeight: 1.2,
+                        }}>
+                            {ROLE_NAMES[currentPlayer.role] || currentPlayer.role}
+                        </Text>
+                    </div>
                 </div>
             )}
 

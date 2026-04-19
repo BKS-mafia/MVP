@@ -528,7 +528,11 @@ class StateMachine:
                     "instruction": "Choose a civilian to kill tonight.",
                 }
                 tasks.append(
-                    self.ai_service.request_night_action(player, ctx, self.mcp_dispatcher)
+                    self.ai_service.request_night_action(
+                        player, ctx, self.mcp_dispatcher,
+                        room_id=self.room_id,
+                        player_ids=[p.id for p in self.players if p.is_alive]
+                    )
                 )
 
             for player in doctor_ai:
@@ -539,8 +543,13 @@ class StateMachine:
                     "instruction": "Choose a player to heal/protect tonight.",
                 }
                 tasks.append(
-                    self.ai_service.request_night_action(player, ctx, self.mcp_dispatcher)
+                    self.ai_service.request_night_action(
+                        player, ctx, self.mcp_dispatcher,
+                        room_id=self.room_id,
+                        player_ids=[p.id for p in self.players if p.is_alive]
+                    )
                 )
+
 
             for player in commissioner_ai:
                 ctx = {
@@ -550,7 +559,11 @@ class StateMachine:
                     "instruction": "Choose a player to investigate their alignment.",
                 }
                 tasks.append(
-                    self.ai_service.request_night_action(player, ctx, self.mcp_dispatcher)
+                    self.ai_service.request_night_action(
+                        player, ctx, self.mcp_dispatcher,
+                        room_id=self.room_id,
+                        player_ids=[p.id for p in self.players if p.is_alive]
+                    )
                 )
 
             if tasks:
@@ -804,7 +817,11 @@ class StateMachine:
                 logger.info(f"  mcp_dispatcher: {self.mcp_dispatcher}")
                 
                 try:
-                    result = await self.ai_service.request_day_message(bot, ctx, self.mcp_dispatcher)
+                    result = await self.ai_service.request_day_message(
+                        bot, ctx, self.mcp_dispatcher,
+                        room_id=self.room_id,
+                        player_ids=[p.id for p in self.players if p.is_alive]
+                    )
                     logger.info(f"AI day message result for player {bot.id}: {result}")
                     
                     # Если результат пустой или ошибка - используем fallback
@@ -893,7 +910,11 @@ class StateMachine:
             ai_alive = [p for p in self.players if p.is_ai and p.is_alive]
 
             vote_tasks = [
-                self._ai_vote_with_delay(bot, self._build_game_context({"phase": "voting"}))
+                self._ai_vote_with_delay(
+                    bot, self._build_game_context({"phase": "voting"}),
+                    room_id=self.room_id,
+                    player_ids=[p.id for p in self.players if p.is_alive]
+                )
                 for bot in ai_alive
             ]
 
@@ -977,11 +998,18 @@ class StateMachine:
             if self.game_service:
                 self.game_service.start_phase_timer(self.room_id, "night")
 
-    async def _ai_vote_with_delay(self, player: Any, context: dict) -> None:
+    async def _ai_vote_with_delay(
+        self, player: Any, context: dict, room_id: Optional[int] = None,
+        player_ids: Optional[List[int]] = None
+    ) -> None:
         """Запрашивает голос у ИИ с небольшой случайной задержкой."""
         await asyncio.sleep(random.uniform(2, 8))
         try:
-            await self.ai_service.request_vote(player, context, self.mcp_dispatcher)
+            await self.ai_service.request_vote(
+                player, context, self.mcp_dispatcher,
+                room_id=room_id or self.room_id,
+                player_ids=player_ids or [p.id for p in self.players if p.is_alive]
+            )
         except Exception as e:
             logger.error(f"AI vote error (player_id={player.id}): {e}")
             # Fallback: случайный голос
