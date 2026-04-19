@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Mafia - Тестовый интерфейс</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="css/styles.css">
 </head>
 
 <body>
@@ -68,6 +68,29 @@
                     <div class="room-info-item">
                         <span class="room-info-label">Host Token:</span>
                         <span class="room-info-value" id="display-host-token">-</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Список комнат -->
+            <section class="card" id="rooms-section">
+                <div class="card-header">
+                    <div class="card-icon">📋</div>
+                    <h2>Список комнат</h2>
+                    <button id="btn-refresh-rooms" class="btn-small" style="margin-left: auto;">🔄</button>
+                </div>
+                <div class="form-group">
+                    <label>Фильтр по статусу:</label>
+                    <select id="select-room-status">
+                        <option value="">Все</option>
+                        <option value="lobby">Lobby</option>
+                        <option value="active">Active</option>
+                        <option value="archiv">Archive</option>
+                    </select>
+                </div>
+                <div class="rooms-list" id="rooms-list">
+                    <div style="text-align: center; color: #6b7280; padding: 20px;">
+                        Нажмите "Обновить список" для загрузки комнат
                     </div>
                 </div>
             </section>
@@ -188,12 +211,8 @@
             <!-- Контейнер чата -->
             <div class="chat-container">
                 <div class="chat-messages" id="chat-messages">
-                    <div class="chat-message other">
-                        <div class="message-header">
-                            <span class="message-sender">Система</span>
-                            <span class="message-time">--:--</span>
-                        </div>
-                        <div class="message-content">Добро пожаловать в AI Mafia! Создайте или присоединитесь к комнате, чтобы начать игру.</div>
+                    <div class="chat-message system">
+                        <div class="message-content system-notification">Добро пожаловать в AI Mafia! Создайте или присоединитесь к комнате, чтобы начать игру.</div>
                     </div>
                 </div>
                 <div class="chat-input-area">
@@ -252,7 +271,8 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <!-- Модульные скрипты -->
+    <script type="module" src="js/app.js"></script>
 </body>
 
 </html>
