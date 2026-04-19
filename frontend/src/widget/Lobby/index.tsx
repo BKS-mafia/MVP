@@ -11,6 +11,7 @@ interface Player {
     id: string;
     name: string;
     avatar?: string | null;
+    isAI?: boolean;
 }
 
 interface LobbyProps {
@@ -87,7 +88,7 @@ const Lobby: React.FC<LobbyProps> = ({ maxPlayers, players, onReady }) => {
                                         src={slot.player.avatar}
                                         icon={<UserOutlined />}
                                         style={{
-                                            backgroundColor: '#3b82f6',
+                                            backgroundColor: slot.player.isAI ? '#6b7280' : '#3b82f6',
                                             border: '2px solid #e2e8f0',
                                         }}
                                     />
@@ -100,8 +101,19 @@ const Lobby: React.FC<LobbyProps> = ({ maxPlayers, players, onReady }) => {
                                             fontWeight: 500,
                                         }}
                                     >
-                                        {slot.player.name}
+                                        {slot.player.isAI ? '???' : slot.player.name}
                                     </Text>
+                                    {slot.player.isAI && (
+                                        <Text
+                                            style={{
+                                                display: 'block',
+                                                fontSize: 12,
+                                                color: '#9ca3af',
+                                            }}
+                                        >
+                                            AI
+                                        </Text>
+                                    )}
                                 </>
                             ) : (
                                 <>

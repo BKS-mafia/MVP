@@ -17,6 +17,7 @@ interface Player {
     id: string;
     name: string;
     avatar?: string | null;
+    isAI?: boolean;
 }
 
 export default function LobbyPage() {
@@ -72,6 +73,7 @@ export default function LobbyPage() {
                     id: p.player_id || String(p.id),
                     name: p.nickname,
                     avatar: p.is_ai ? null : null,
+                    isAI: p.is_ai,
                 }));
                 
                 setPlayers(formattedPlayers);

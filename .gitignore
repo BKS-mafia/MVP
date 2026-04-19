@@ -1,3 +1,4 @@
 /.roo
 *.pyc
 /frontend/test-screenshots
+.env
