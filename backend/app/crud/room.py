@@ -1,8 +1,7 @@
 """
-from datetime import datetime, timezone, timedelta
-
 CRUD операции для модели Room.
 """
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 import json
 import uuid

@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,6 +6,8 @@ from sqlalchemy.exc import IntegrityError
 from typing import List, Any, Dict, Optional
 
 from app import crud, schemas
+
+logger = logging.getLogger(__name__)
 from app.db.session import get_db
 from app.services.room_service import room_service
 from app.services.game_service import game_service
@@ -92,11 +95,20 @@ async def create_room(
     """
     try:
         room = await room_service.create_room(db, room_create=room_in)
+        
+        # DEBUG: Логирование для диагностики MissingGreenlet
+        logger.debug(f"Room created: id={room.id}, room_id={room.room_id}")
+        logger.debug(f"  created_at type: {type(room.created_at)}, value: {room.created_at}")
+        logger.debug(f"  updated_at type: {type(room.updated_at)}, value: {room.updated_at}")
+        
+        # Явное преобразование в Pydantic схему для избежания проблем с greenlet
+        room_schema = schemas.Room.model_validate(room)
+        return room_schema
+        
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except IntegrityError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Room with such parameters already exists")
-    return room
 
 
 # ── GET /{room_id} — получить комнату ────────────────────────────────────────
