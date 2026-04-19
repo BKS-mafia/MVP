@@ -259,6 +259,8 @@ async def handle_chat_message(
     Chat messages are persisted as GameEvent records when an active game exists.
     """
     content: str = message.get("content", "").strip()
+    clientMessageId: Optional[str] = message.get("clientMessageId")
+    
     if not content:
         await manager.send_personal_message(
             {"error": "Message content cannot be empty"}, websocket
@@ -303,6 +305,7 @@ async def handle_chat_message(
             "content": content,
             "is_ai": player.is_ai,
             "is_mafia_channel": True,
+            "clientMessageId": clientMessageId,
         }
 
         # Persist as a game event if a game record exists
@@ -330,6 +333,7 @@ async def handle_chat_message(
         "content": content,
         "is_ai": player.is_ai,
         "is_mafia_channel": False,
+        "clientMessageId": clientMessageId,
     }
 
     if game:
@@ -375,6 +379,7 @@ async def handle_chat_message_extended(
     chat_name = message.get("chatName", "").strip()
     body = message.get("body", "").strip()
     room_id_str = message.get("roomId", "")
+    clientMessageId: Optional[str] = message.get("clientMessageId")
     
     # Validate required fields
     if not chat_name:
@@ -520,6 +525,7 @@ async def handle_chat_message_extended(
         "player_id": player.id,
         "nickname": player.nickname,
         "is_ai": player.is_ai,
+        "clientMessageId": clientMessageId,
     }
     
     # Send to recipients

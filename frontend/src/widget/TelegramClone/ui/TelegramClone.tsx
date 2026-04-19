@@ -54,6 +54,9 @@ export const TelegramClone: React.FC = () => {
     const currentUserIdRef = useRef<number | null>(null);
     const currentUserNameRef = useRef<string>('');
 
+    // Множество для дедупликации сообщений (clientMessageId -> true)
+    const processedMessageIdsRef = useRef<Set<string>>(new Set());
+
     // Подключение к WebSocket при монтировании
     useEffect(() => {
         if (!roomId || !token) {
@@ -71,16 +74,25 @@ export const TelegramClone: React.FC = () => {
             const message = data as ChatEventMessage;
             console.log('Received chat_event:', message);
             
+            // Дедупликация: проверяем clientMessageId
+            if (message.clientMessageId && processedMessageIdsRef.current.has(message.clientMessageId)) {
+                console.log('Duplicate message ignored:', message.clientMessageId);
+                return;
+            }
+            if (message.clientMessageId) {
+                processedMessageIdsRef.current.add(message.clientMessageId);
+            }
+            
             // Определяем ID чата на основе is_mafia_channel
             const chatId = message.is_mafia_channel ? 'mafia' : 'general';
             
             const newMessage: ChatMessageType = {
-                id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                id: message.clientMessageId || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 userId: String(message.player_id),
                 userName: message.nickname,
                 text: message.content,
                 timestamp: Date.now(),
-                isOwn: false,
+                isOwn: message.clientMessageId ? false : (message.player_id === currentUserIdRef.current),
             };
 
             setChatMessages(prev => ({
@@ -100,16 +112,25 @@ export const TelegramClone: React.FC = () => {
             const message = data as ChatEventExtendedMessage;
             console.log('Received chat_event_extended:', message);
             
+            // Дедупликация: проверяем clientMessageId
+            if (message.clientMessageId && processedMessageIdsRef.current.has(message.clientMessageId)) {
+                console.log('Duplicate message ignored:', message.clientMessageId);
+                return;
+            }
+            if (message.clientMessageId) {
+                processedMessageIdsRef.current.add(message.clientMessageId);
+            }
+            
             // Маппим имя чата из бекенда в локальный ID
             const chatId = CHAT_NAME_MAPPING[message.chatName] || message.chatName;
             
             const newMessage: ChatMessageType = {
-                id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                id: message.clientMessageId || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 userId: String(message.player_id),
                 userName: message.nickname,
                 text: message.body,
                 timestamp: Date.now(),
-                isOwn: false,
+                isOwn: message.clientMessageId ? false : (message.player_id === currentUserIdRef.current),
             };
 
             setChatMessages(prev => ({
@@ -204,53 +225,47 @@ export const TelegramClone: React.FC = () => {
     const handleSendMessage = useCallback(() => {
         if (!newMessageText.trim()) return;
 
+        // Генерируем уникальный ID для дедупликации
+        const clientMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
         // Определяем тип сообщения на основе выбранного чата
-        let wsMessage: { type: string; content?: string; chatName?: string; body?: string };
+        let wsMessage: { type: string; content?: string; chatName?: string; body?: string; clientMessageId: string };
         
         if (selectedChatId === 'general') {
             wsMessage = {
                 type: 'chat_message',
                 content: newMessageText.trim(),
+                clientMessageId,
             };
         } else if (selectedChatId === 'mafia') {
             wsMessage = {
                 type: 'chat_message_extended',
                 chatName: 'mafiaGroup',
                 body: newMessageText.trim(),
+                clientMessageId,
             };
         } else if (selectedChatId === 'commissioner') {
             wsMessage = {
                 type: 'chat_message_extended',
                 chatName: 'roleChat',
                 body: newMessageText.trim(),
+                clientMessageId,
             };
         } else {
             wsMessage = {
                 type: 'chat_message',
                 content: newMessageText.trim(),
+                clientMessageId,
             };
         }
 
         // Отправляем сообщение через WebSocket
         websocketClient.send(wsMessage);
 
-        // Добавляем сообщение в локальное состояние (оно придёт обратно от сервера)
-        // Но для мгновенного отображения добавим локально
-        const localMessage: ChatMessageType = {
-            id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            userId: currentUserIdRef.current ? String(currentUserIdRef.current) : 'local',
-            userName: currentUserNameRef.current || 'Вы',
-            text: newMessageText.trim(),
-            timestamp: Date.now(),
-            isOwn: true,
-        };
+        // НЕ добавляем сообщение локально - ждём ответа от сервера с clientMessageId
+        // Это предотвращает дублирование
 
-        setChatMessages(prev => ({
-            ...prev,
-            [selectedChatId]: [...(prev[selectedChatId] || []), localMessage],
-        }));
-
-        // Обновляем lastMessage в списке чатов
+        // Обновляем lastMessage в списке чатов (визуальная обратная связь)
         setChats(prev => prev.map(chat =>
             chat.id === selectedChatId
                 ? { ...chat, lastMessage: newMessageText.trim(), lastMessageTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }

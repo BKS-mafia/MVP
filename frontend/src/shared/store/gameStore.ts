@@ -70,6 +70,14 @@ interface GameState {
     dayNumber: number;
     gameStatus: string | null;
     
+    // Таймер фазы
+    phaseTimer: {
+        phase: string;
+        remaining_seconds: number;
+        duration_seconds: number;
+        day_number: number;
+    } | null;
+    
     // Флаги
     isConnected: boolean;
     isLoading: boolean;
@@ -98,6 +106,7 @@ interface GameState {
     setGamePhase: (phase: string | null) => void;
     setDayNumber: (day: number) => void;
     setGameStatus: (status: string | null) => void;
+    setPhaseTimer: (timer: GameState['phaseTimer']) => void;
     
     // Методы для соединения
     setConnected: (connected: boolean) => void;
@@ -121,6 +130,7 @@ const initialState = {
     isConnected: false,
     isLoading: false,
     error: null,
+    phaseTimer: null,
 };
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -181,6 +191,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     setGamePhase: (phase) => set({ gamePhase: phase }),
     setDayNumber: (day) => set({ dayNumber: day }),
     setGameStatus: (status) => set({ gameStatus: status }),
+    setPhaseTimer: (timer) => set({ phaseTimer: timer }),
     
     // Соединение
     setConnected: (connected) => set({ isConnected: connected }),
@@ -200,3 +211,4 @@ export const selectVoting = (state: GameState) => state.voting;
 export const selectIsConnected = (state: GameState) => state.isConnected;
 export const selectGamePhase = (state: GameState) => state.gamePhase;
 export const selectDayNumber = (state: GameState) => state.dayNumber;
+export const selectPhaseTimer = (state: GameState) => state.phaseTimer;

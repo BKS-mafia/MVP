@@ -46,6 +46,7 @@ class GameService:
         self.tasks: Dict[int, asyncio.Task] = {}  # room_id -> задача таймера
         self.ready_players: Dict[int, set] = {}  # room_id -> set of ready player_ids
         self._phase_timers: Dict[int, asyncio.Task] = {}  # room_id -> asyncio.Task (таймер фазы)
+        self._timer_broadcast_tasks: Dict[int, asyncio.Task] = {}  # room_id -> задача рассылки таймера
         
         # Загружаем список имён для AI игроков
         self._ai_names: List[str] = self._load_ai_names()
@@ -513,6 +514,31 @@ class GameService:
         except Exception as e:
             logger.error(f"Phase timer error for room {room_id}: {e}")
 
+    async def _broadcast_timer_updates(self, room_id: int) -> None:
+        """
+        Периодическая рассылка обновлений таймера фазы всем игрокам.
+        Каждую секунду отправляет оставшееся время.
+        """
+        try:
+            while True:
+                await asyncio.sleep(1)  # Обновляем каждую секунду
+                
+                machine = self.active_machines.get(room_id)
+                if machine is None:
+                    break  # Игра завершена
+                
+                # Проверяем, что таймер всё ещё активен
+                if room_id not in self._phase_timers:
+                    break
+                
+                # Отправляем обновление таймера
+                await machine._broadcast_phase_timer()
+                
+        except asyncio.CancelledError:
+            pass  # Таймер был отменён — это нормально
+        except Exception as e:
+            logger.error(f"Broadcast timer update error for room {room_id}: {e}")
+
     def start_phase_timer(
         self, room_id: int, phase: str, duration_seconds: int = None
     ) -> asyncio.Task:
@@ -538,6 +564,18 @@ class GameService:
         # Отменяем предыдущий таймер если есть
         self.cancel_phase_timer(room_id)
 
+        # Синхронизируем таймер в StateMachine
+        machine = self.active_machines.get(room_id)
+        if machine:
+            machine.reset_phase_timer(duration_seconds)
+            # Отменяем предыдущую задачу рассылки если есть
+            old_broadcast = self._timer_broadcast_tasks.get(room_id)
+            if old_broadcast and not old_broadcast.done():
+                old_broadcast.cancel()
+            # Запускаем периодическую рассылку обновлений таймера
+            broadcast_task = asyncio.create_task(self._broadcast_timer_updates(room_id))
+            self._timer_broadcast_tasks[room_id] = broadcast_task
+
         # Запускаем новый таймер
         task = asyncio.create_task(
             self._phase_timer(room_id, phase, duration_seconds)
@@ -555,6 +593,12 @@ class GameService:
         if existing and not existing.done():
             existing.cancel()
         self._phase_timers.pop(room_id, None)
+        
+        # Также отменяем задачу рассылки таймера
+        broadcast_task = self._timer_broadcast_tasks.get(room_id)
+        if broadcast_task and not broadcast_task.done():
+            broadcast_task.cancel()
+        self._timer_broadcast_tasks.pop(room_id, None)
 
     async def cleanup_room(self, room_id: int):
         """

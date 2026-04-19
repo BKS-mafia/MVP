@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 import { Spin, message } from 'antd';
 import { TelegramClone } from '@/src/widget/TelegramClone';
+import { GameHeaderWidget } from '@/src/widget/GameHeaderWidget';
 import { websocketClient } from '@/src/shared/api/websocket';
 import { useGameStore, ChatMessage, Player, Voting } from '@/src/shared/store/gameStore';
 import { getRoom, getPlayers } from '@/src/shared/api/endpoints/rooms';
@@ -24,6 +25,7 @@ export default function RoomPage() {
         players,
         messages,
         voting,
+        phaseTimer,
         setRoom,
         setCurrentPlayer,
         setPlayers: setStorePlayers,
@@ -33,6 +35,7 @@ export default function RoomPage() {
         setGamePhase,
         setDayNumber,
         setGameStatus,
+        setPhaseTimer,
     } = useGameStore();
 
     // Инициализация при загрузке страницы
@@ -215,6 +218,26 @@ export default function RoomPage() {
             }
         };
 
+        // Обработка обновления таймера фазы
+        const handlePhaseTimer = (data: unknown) => {
+            const timerData = data as {
+                type: string;
+                phase: string;
+                remaining_seconds: number;
+                duration_seconds: number;
+                day_number: number;
+            };
+            
+            if (timerData.type === 'phase_timer') {
+                setPhaseTimer({
+                    phase: timerData.phase,
+                    remaining_seconds: timerData.remaining_seconds,
+                    duration_seconds: timerData.duration_seconds,
+                    day_number: timerData.day_number,
+                });
+            }
+        };
+
         // Обработка обновления игроков
         const handlePlayerUpdate = (data: unknown) => {
             const update = data as {
@@ -253,6 +276,27 @@ export default function RoomPage() {
             }
         };
 
+        // Обработка назначения роли
+        const handleRoleAssigned = (data: unknown) => {
+            const roleData = data as {
+                type: string;
+                player_id: number;
+                role: string;
+                day_number: number;
+            };
+            
+            if (roleData.type === 'role_assigned') {
+                // Обновляем роль текущего игрока в store
+                const { currentPlayer } = useGameStore.getState();
+                if (currentPlayer && currentPlayer.id === roleData.player_id) {
+                    useGameStore.getState().setCurrentPlayer({
+                        ...currentPlayer,
+                        role: roleData.role,
+                    }, currentPlayer.session_token || undefined);
+                }
+            }
+        };
+
         // Обработка конца игры
         const handleGameEnd = (data: unknown) => {
             const endData = data as {
@@ -285,8 +329,10 @@ export default function RoomPage() {
         websocketClient.on('voting_update', handleVoting);
         websocketClient.on('voting_ended', handleVoting);
         websocketClient.on('phase_changed', handlePhaseChange);
+        websocketClient.on('phase_timer', handlePhaseTimer);
         websocketClient.on('player_updated', handlePlayerUpdate);
         websocketClient.on('game_event', handleGameEvent);
+        websocketClient.on('role_assigned', handleRoleAssigned);
         websocketClient.on('game_ended', handleGameEnd);
 
         // Отключение при размонтировании
@@ -300,8 +346,10 @@ export default function RoomPage() {
             websocketClient.off('voting_update', handleVoting);
             websocketClient.off('voting_ended', handleVoting);
             websocketClient.off('phase_changed', handlePhaseChange);
+            websocketClient.off('phase_timer', handlePhaseTimer);
             websocketClient.off('player_updated', handlePlayerUpdate);
             websocketClient.off('game_event', handleGameEvent);
+            websocketClient.off('role_assigned', handleRoleAssigned);
             websocketClient.off('game_ended', handleGameEnd);
             websocketClient.disconnect();
         };
@@ -340,8 +388,9 @@ export default function RoomPage() {
     }
 
     return (
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
             {contextHolder}
+            <GameHeaderWidget />
             <TelegramCloneWrapper
                 messages={messages}
                 players={players}

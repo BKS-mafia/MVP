@@ -29,6 +29,7 @@ export interface ChatEventMessage {
     content: string;
     is_ai: boolean;
     is_mafia_channel: boolean;
+    clientMessageId?: string; // ID сообщения для дедупликации
 }
 
 // chat_event_extended - сообщение в конкретный чат (cityGroup, mafiaGroup, roleChat)
@@ -39,6 +40,7 @@ export interface ChatEventExtendedMessage {
     player_id: number;
     nickname: string;
     is_ai: boolean;
+    clientMessageId?: string; // ID сообщения для дедупликации
 }
 
 // ghost_chat_message - сообщение от призрака
@@ -64,6 +66,7 @@ export type IncomingWebSocketMessage =
 export interface OutgoingChatMessage {
     type: 'chat_message';
     content: string;
+    clientMessageId: string; // Уникальный ID для дедупликации
 }
 
 // chat_message_extended - отправка в конкретный чат
@@ -71,12 +74,14 @@ export interface OutgoingChatMessageExtended {
     type: 'chat_message_extended';
     chatName: 'cityGroup' | 'mafiaGroup' | 'roleChat';
     body: string;
+    clientMessageId: string; // Уникальный ID для дедупликации
 }
 
 // ghost_chat - отправка сообщения призрака
 export interface OutgoingGhostChat {
     type: 'ghost_chat';
     content: string;
+    clientMessageId: string; // Уникальный ID для дедупликации
 }
 
 // Объединённый тип для всех исходящих сообщений

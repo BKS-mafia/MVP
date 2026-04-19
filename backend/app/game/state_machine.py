@@ -11,6 +11,7 @@ from app.db.session import AsyncSession
 from sqlalchemy import select, update
 import json
 import logging
+import time as time_module
 
 if TYPE_CHECKING:
     from app.websocket.manager import ConnectionManager
@@ -75,6 +76,11 @@ class StateMachine:
         self.ai_last_message: Dict[int, str] = {}
         # Таймстемп последнего сообщения для защиты от дублирования
         self.ai_last_message_time: Dict[int, float] = {}
+        
+        # Время начала текущей фазы (для таймера)
+        self.phase_start_time: float = time_module.time()
+        # Длительность текущей фазы в секундах
+        self.phase_duration: int = 60
 
         self._register_dispatcher_callbacks()
 
@@ -90,6 +96,37 @@ class StateMachine:
         self.mcp_dispatcher.register_vote(self._process_ai_vote)
         self.mcp_dispatcher.register_night_action(self._process_ai_night_action)
         self.mcp_dispatcher.register_get_game_state(self._get_game_state_for_ai)
+
+    # ------------------------------------------------------------------
+    # Вспомогательные методы для таймера
+    # ------------------------------------------------------------------
+
+    def reset_phase_timer(self, duration: int) -> None:
+        """Сбросить таймер текущей фазы."""
+        self.phase_start_time = time_module.time()
+        self.phase_duration = duration
+
+    def get_remaining_time(self) -> int:
+        """Получить оставшееся время текущей фазы в секундах."""
+        elapsed = time_module.time() - self.phase_start_time
+        remaining = self.phase_duration - int(elapsed)
+        return max(0, remaining)
+
+    async def _broadcast_phase_timer(self) -> None:
+        """Рассылка обновления таймера фазы всем игрокам."""
+        remaining = self.get_remaining_time()
+        phase_value = (
+            self.current_phase.value
+            if hasattr(self.current_phase, "value")
+            else str(self.current_phase)
+        )
+        await self._broadcast({
+            "type": "phase_timer",
+            "phase": phase_value,
+            "remaining_seconds": remaining,
+            "duration_seconds": self.phase_duration,
+            "day_number": self.day_number,
+        })
 
     # ------------------------------------------------------------------
     # Запуск / остановка
